@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Job Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="popup">
+    <h1>Job Assistant <button id="settingsBtn" title="Settings">⚙️</button></h1>
+
+    <!-- ── Main Menu ─────────────────────────────────────────────────────── -->
+    <div id="buttonContainer">
+      <button class="btn-primary"   id="fillFormBtn">📋 Fill Application Form</button>
+      <button class="btn-secondary" id="analyzeBtn">📊 Analyze Job Matching</button>
+      <button class="btn-secondary" id="editResumeBtn">✏️ Edit Resume</button>
+    </div>
+
+    <!-- ── Fill Form Flow ─────────────────────────────────────────────────── -->
+    <div id="formFillContainer" class="hidden">
+      <div class="card card-amber" style="margin-bottom:12px;">
+        <strong>Application Form</strong>
+        <p style="margin-top:4px;">Do you have the job description? Providing it helps fill fields more intelligently.</p>
+      </div>
+
+      <div id="jobDescChoices" class="btn-stack">
+        <button class="btn-primary"   id="hasJobDescBtn">✅ Yes, I have the job description</button>
+        <button class="btn-secondary" id="noJobDescBtn">⏭️ No, just fill the form</button>
+      </div>
+
+      <div id="jobDescInput" class="hidden" style="margin-top:8px;">
+        <label for="jobDescriptionText" style="display:block;margin-bottom:4px;font-size:13px;font-weight:500;">Paste Job Description</label>
+        <textarea id="jobDescriptionText" placeholder="Paste the job posting here…"></textarea>
+        <div id="infoMsg"></div>
+        <div class="btn-stack">
+          <button class="btn-primary"   id="analyzeWithDescBtn">Analyze &amp; Fill Form</button>
+          <button class="btn-secondary" id="cancelDescBtn">Cancel</button>
+        </div>
+      </div>
+
+      <div id="fillingStatus" class="hidden card card-blue" style="margin-top:8px;text-align:center;">
+        <strong>⏳ Filling form…</strong>
+        <p>This may take a few seconds.</p>
+      </div>
+
+      <div id="fillResult" class="hidden card card-green" style="margin-top:8px;"></div>
+
+      <button class="btn-primary hidden" id="doneFillingBtn" style="margin-top:8px;width:100%;">✓ Done</button>
+      <button class="btn-secondary" id="backFromFillBtn" style="margin-top:8px;">← Back</button>
+    </div>
+
+    <!-- ── Analysis View ──────────────────────────────────────────────────── -->
+    <div id="analysisContainer" class="hidden">
+      <div class="card card-green">
+        <div class="match-percentage" id="matchPercentage">--</div>
+        <div id="analysis" style="font-size:13px;color:#555;margin-top:4px;"></div>
+      </div>
+      <button class="btn-secondary" id="backToMenuBtn">← Back</button>
+    </div>
+
+    <!-- ── Error View ─────────────────────────────────────────────────────── -->
+    <div id="errorContainer" class="hidden">
+      <div class="card card-red">
+        <p id="errorMessage"></p>
+      </div>
+      <button class="btn-secondary" id="backFromErrorBtn" style="margin-top:8px;">← Back</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

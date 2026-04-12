@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2351c4"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#00000040"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="128" height="128" rx="22" ry="22" fill="url(#bg)"/>
+
+  <!-- Subtle inner highlight at top -->
+  <rect x="0" y="0" width="128" height="54" rx="22" ry="22" fill="white" opacity="0.06"/>
+
+  <!-- JA letters: italic serif, white -->
+  <text
+    x="64"
+    y="91"
+    font-family="Georgia, 'Palatino Linotype', Palatino, 'Book Antiqua', serif"
+    font-style="italic"
+    font-weight="bold"
+    font-size="76"
+    fill="white"
+    text-anchor="middle"
+    letter-spacing="-1"
+    filter="url(#shadow)"
+  >JA</text>
+</svg>

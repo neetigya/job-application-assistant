@@ -1,0 +1,217 @@
+// Background service worker - handles Claude API calls and data management
+import { JobData } from '../types/resume';
+import { logger } from '../utils/logger';
+
+const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
+
+async function getApiKey(): Promise<string> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['apiKey'], (result: { [key: string]: any }) => {
+      resolve(result.apiKey || '');
+    });
+  });
+}
+
+// Call Claude API to analyze job match
+async function analyzeJobMatch(resume: string, jobData: JobData): Promise<{percentage: number; analysis: string}> {
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    return { percentage: 0, analysis: 'No API key set. Please add your Claude API key in the extension options.' };
+  }
+  try {
+    const prompt = `
+You are a job application expert. Analyze how well this resume matches the job posting.
+
+RESUME:
+${resume}
+
+JOB POSTING:
+Title: ${jobData.title}
+Company: ${jobData.company}
+Description: ${jobData.description}
+
+Please provide:
+1. A match percentage (0-100) based on skills alignment, experience level, and job requirements
+2. A brief 2-3 sentence analysis of the key matches and gaps
+
+Format your response as:
+PERCENTAGE: [number]
+ANALYSIS: [your analysis]
+`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 16000,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      logger.error('Claude API error:', error);
+      const msg = error?.error?.message || JSON.stringify(error);
+      return {
+        percentage: 0,
+        analysis: `API error (${response.status}): ${msg}`
+      };
+    }
+
+    const data = await response.json();
+    const content = data.content[0].text;
+
+    // Parse response
+    const percentageMatch = content.match(/PERCENTAGE:\s*(\d+)/);
+    const analysisMatch = content.match(/ANALYSIS:\s*(.+?)(?=\n|$)/s);
+
+    const percentage = percentageMatch ? parseInt(percentageMatch[1]) : 0;
+    const analysis = analysisMatch ? analysisMatch[1].trim() : content;
+
+    return { percentage, analysis };
+  } catch (error) {
+    logger.error('Error calling Claude API:', error);
+    return {
+      percentage: 0,
+      analysis: 'Error analyzing match. Please try again.'
+    };
+  }
+}
+
+// Save application record
+async function saveApplicationRecord(jobData: JobData, analysis: any, timestamp: Date) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['applications'], (result: { [key: string]: any }) => {
+      const applications = result.applications || [];
+      
+      applications.push({
+        jobTitle: jobData.title,
+        company: jobData.company,
+        jobUrl: jobData.url,
+        timestamp: timestamp.toISOString(),
+        analysis: analysis,
+        status: 'applied' // or 'skipped', 'rejected'
+      });
+
+      chrome.storage.local.set({ applications }, () => {
+        resolve(applications);
+      });
+    });
+  });
+}
+
+// Generate an answer for a detected open-ended question
+async function generateAnswerForQuestion(
+  fieldLabel: string,
+  fieldHint: string,
+  resumeContent: string,
+  jobDescription: string,
+  companyName: string
+): Promise<{ answer: string; questionType: string; confidence: number }> {
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    return { answer: '', questionType: 'unknown', confidence: 0 };
+  }
+
+  const isWhyInterested = /why.*(interest|join|work|want|excit)|what.*excit|tell us why|motivated to/i.test(
+    fieldLabel + ' ' + fieldHint
+  );
+
+  const questionType = isWhyInterested ? 'why_interested' : 'open_ended';
+
+  const prompt = isWhyInterested
+    ? `Generate a compelling, genuine answer (2-3 sentences) to this job application question:
+"${fieldLabel}"
+
+CANDIDATE BACKGROUND:
+${resumeContent}
+
+JOB DESCRIPTION:
+${jobDescription || '(not provided)'}
+
+Company: ${companyName || '(unknown)'}
+
+Requirements:
+- Show specific knowledge of the role/company if job description is available
+- Highlight 1-2 relevant skills from the candidate's background
+- Sound authentic, not generic
+- 2-3 sentences maximum
+
+Reply with only the answer text.`
+    : `Generate a concise, professional answer (1-3 sentences) to this job application question:
+"${fieldLabel}"
+
+CANDIDATE BACKGROUND:
+${resumeContent}
+
+JOB DESCRIPTION:
+${jobDescription || '(not provided)'}
+
+Reply with only the answer text.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 250,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      logger.error('generateAnswer API error:', err);
+      return { answer: '', questionType, confidence: 0 };
+    }
+
+    const data = await response.json();
+    const answer = data.content[0].text.trim();
+    return { answer, questionType, confidence: 80 };
+  } catch (error) {
+    logger.error('generateAnswer error:', error);
+    return { answer: '', questionType, confidence: 0 };
+  }
+}
+
+// Listen for messages from popup and content scripts
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'analyzeMatch') {
+    analyzeJobMatch(request.resume, request.jobData).then((result) => {
+      sendResponse(result);
+      // Optionally save the application record
+      saveApplicationRecord(request.jobData, result, new Date());
+    });
+    return true; // Keep channel open for async response
+  }
+
+  if (request.action === 'generateAnswer') {
+    generateAnswerForQuestion(
+      request.fieldLabel,
+      request.fieldHint || '',
+      request.resumeContent || '',
+      request.jobDescription || '',
+      request.companyName || ''
+    ).then((result) => sendResponse(result));
+    return true; // Keep channel open for async response
+  }
+});
+
+logger.info('Background script loaded');

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+test-data.config.js
+*.js.map
+.DS_Store
+.env
+.env.local
+.vscode/
+.idea/
+.claude/

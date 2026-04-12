@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Assistant Settings</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #121212;
+      color: #e0e0e0;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 220px;
+      background: #1a1a1a;
+      border-right: 1px solid #2a2a2a;
+      padding: 24px 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .sidebar-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0 20px 16px;
+    }
+
+    .nav-item {
+      display: block;
+      padding: 10px 20px;
+      color: #aaa;
+      text-decoration: none;
+      font-size: 14px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+    }
+
+    .nav-item:hover { color: #fff; background: #222; }
+    .nav-item.active { color: #4a9eff; border-left-color: #4a9eff; background: #1e2a3a; }
+
+    /* Main content */
+    .main {
+      margin-left: 220px;
+      flex: 1;
+      padding: 32px 40px;
+      max-width: 860px;
+    }
+
+    .page-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 28px;
+    }
+
+    /* Cards */
+    .card {
+      background: #1e1e1e;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .card-desc {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 20px;
+    }
+
+    /* Generic inputs (for API key, preferences, questions — unchanged look) */
+    input[type="text"]:not(.form-group input),
+    select:not(.form-group select) {
+      width: 100%;
+      padding: 10px 12px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    textarea:not(.form-group textarea) {
+      width: 100%;
+      padding: 10px 12px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+      margin-bottom: 12px;
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    label:not(.form-group label):not(.checkbox-row label) {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: #ccc;
+      margin-bottom: 6px;
+    }
+
+    /* Buttons */
+    button {
+      padding: 9px 18px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .btn-primary {
+      background: #4a9eff;
+      color: #fff;
+    }
+
+    .btn-primary:hover { background: #3a8ef0; }
+
+    .btn-secondary {
+      background: #2a2a2a;
+      color: #ccc;
+      border: 1px solid #444;
+    }
+
+    .btn-secondary:hover { background: #333; }
+
+    /* Status messages */
+    .status {
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-top: 12px;
+      font-size: 13px;
+      display: none;
+    }
+
+    .status.success {
+      background: #1a3a1a;
+      color: #4caf50;
+      border: 1px solid #2e5e2e;
+      display: block;
+    }
+
+    .status.error {
+      background: #3a1a1a;
+      color: #ff6b6b;
+      border: 1px solid #5e2e2e;
+      display: block;
+    }
+
+    .help-text {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+      margin-bottom: 12px;
+    }
+
+    /* Question list */
+    .question-item {
+      background: #252525;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 14px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .question-item .q-text { font-size: 14px; color: #ddd; font-weight: 500; margin-bottom: 4px; }
+    .question-item .a-text { font-size: 12px; color: #888; }
+
+    /* ===== NEW RESUME FORM STYLES ===== */
+    .form-row { display: flex; gap: 16px; margin-bottom: 16px; }
+    .form-row .form-group { flex: 1; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 500; color: #ccc; margin-bottom: 6px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%;
+      padding: 8px 12px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none;
+      border-color: #4a9eff;
+    }
+    .field-error { color: #ff6b6b; font-size: 12px; margin-top: 4px; display: none; }
+    .field-error.visible { display: block; }
+    .job-entry, .education-entry {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+      position: relative;
+    }
+    .entry-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .entry-header h4 { margin: 0; color: #ccc; font-size: 14px; }
+    .btn-remove {
+      background: none;
+      border: 1px solid #555;
+      color: #aaa;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btn-remove:hover { border-color: #ff6b6b; color: #ff6b6b; }
+    .btn-add {
+      background: none;
+      border: 1px dashed #4a9eff;
+      color: #4a9eff;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+    .btn-add:hover { background: rgba(74,158,255,0.1); }
+    .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .checkbox-row input[type=checkbox] { width: auto; }
+    .checkbox-row label { margin: 0; font-size: 13px; color: #aaa; }
+    .section-divider { border: none; border-top: 1px solid #333; margin: 24px 0; }
+    .radio-group { display: flex; gap: 24px; margin-top: 6px; }
+    .radio-label { display: flex; align-items: center; gap: 6px; color: #ccc; font-size: 14px; cursor: pointer; }
+    .radio-label input[type=radio] { width: auto; accent-color: #4a9eff; }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar Navigation -->
+  <nav class="sidebar">
+    <div class="sidebar-title">Settings</div>
+    <a class="nav-item active" href="#resume">Resume</a>
+    <a class="nav-item" href="#api-key">API Key</a>
+    <a class="nav-item" href="#preferences">Preferences</a>
+    <a class="nav-item" href="#questions">Common Questions</a>
+    <a class="nav-item" href="#form-logs">Form Logs</a>
+  </nav>
+
+  <div class="main">
+    <h1 class="page-title">Job Application Assistant</h1>
+
+    <!-- ===== RESUME SECTION ===== -->
+    <div class="card" id="resume">
+      <div class="card-title">Your Resume</div>
+      <div class="card-desc">Fill in your resume details. This information will be used to match you with job postings and auto-fill applications.</div>
+
+      <!-- Personal Info -->
+      <div class="card-title" style="font-size:14px; margin-bottom:14px;">Personal Information</div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="firstName">First Name *</label>
+          <input type="text" id="firstName" placeholder="Jane">
+          <span class="field-error" id="err-firstName">First name is required.</span>
+        </div>
+        <div class="form-group">
+          <label for="lastName">Last Name *</label>
+          <input type="text" id="lastName" placeholder="Smith">
+          <span class="field-error" id="err-lastName">Last name is required.</span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="email">Email *</label>
+          <input type="text" id="email" placeholder="jane@example.com">
+          <span class="field-error" id="err-email">Email is required.</span>
+        </div>
+        <div class="form-group">
+          <label for="phone">Phone *</label>
+          <input type="text" id="phone" placeholder="+1 555-000-0000">
+          <span class="field-error" id="err-phone">Phone is required.</span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="city">City *</label>
+          <input type="text" id="city" placeholder="Austin">
+          <span class="field-error" id="err-city">City is required.</span>
+        </div>
+        <div class="form-group">
+          <label for="state">State *</label>
+          <input type="text" id="state" placeholder="TX">
+          <span class="field-error" id="err-state">State is required.</span>
+        </div>
+        <div class="form-group">
+          <label for="country">Country</label>
+          <input type="text" id="country" placeholder="United States" value="United States">
+        </div>
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="hasPreferredName">
+        <label for="hasPreferredName">I have a preferred name</label>
+      </div>
+
+      <div class="form-group" id="preferredNameGroup" style="display:none;">
+        <label for="preferredName">Preferred Name</label>
+        <input type="text" id="preferredName" placeholder="e.g. Jay">
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Relocation & Commute -->
+      <div class="section-card" id="relocation-section">
+        <h3 class="section-title">Relocation &amp; Commute</h3>
+
+        <div class="form-group">
+          <label>Are you willing to relocate? *</label>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="willingToRelocate" value="yes"> Yes</label>
+            <label class="radio-label"><input type="radio" name="willingToRelocate" value="no"> No</label>
+          </div>
+          <span class="field-error" id="err-willingToRelocate">Please select an option.</span>
+        </div>
+
+        <div class="form-group">
+          <label>Are you able to commute to the job location? *</label>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="ableToCommute" value="yes"> Yes</label>
+            <label class="radio-label"><input type="radio" name="ableToCommute" value="no"> No</label>
+          </div>
+          <span class="field-error" id="err-ableToCommute">Please select an option.</span>
+        </div>
+
+        <div class="form-group">
+          <label>Are you currently employed?</label>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="currentlyEmployed" value="yes"> Yes</label>
+            <label class="radio-label"><input type="radio" name="currentlyEmployed" value="no"> No</label>
+          </div>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Work History -->
+      <div class="card-title" style="font-size:14px; margin-bottom:14px;">Work History</div>
+      <div id="jobEntriesContainer"></div>
+      <button class="btn-add" id="addJobBtn">+ Add Another Job</button>
+
+      <hr class="section-divider">
+
+      <!-- Education -->
+      <div class="card-title" style="font-size:14px; margin-bottom:14px;">Education</div>
+      <div id="educationEntriesContainer"></div>
+      <button class="btn-add" id="addEducationBtn">+ Add Another Education</button>
+
+      <hr class="section-divider">
+
+      <!-- Skills -->
+      <div class="card-title" style="font-size:14px; margin-bottom:14px;">Skills</div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="skillsBackend">Backend</label>
+          <textarea id="skillsBackend" placeholder="Node.js, Python, Go, Java..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="skillsFrontend">Frontend</label>
+          <textarea id="skillsFrontend" placeholder="React, Vue, TypeScript, CSS..."></textarea>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="skillsDatabases">Databases</label>
+          <textarea id="skillsDatabases" placeholder="PostgreSQL, MongoDB, Redis..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="skillsDevops">DevOps / Infrastructure</label>
+          <textarea id="skillsDevops" placeholder="Docker, Kubernetes, AWS, CI/CD..."></textarea>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="skillsOther">Other</label>
+        <textarea id="skillsOther" placeholder="Git, Agile, REST APIs..."></textarea>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Profile Summary -->
+      <div class="section-card" id="profile-summary-section">
+        <h3 class="section-title">Profile Summary</h3>
+        <div class="form-group">
+          <label for="profileSummary">Professional Summary (Optional)</label>
+          <textarea id="profileSummary" placeholder="Senior engineer with 10+ years building scalable SaaS platforms..." style="min-height:100px;"></textarea>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Online Presence -->
+      <div class="section-card" id="online-presence-section">
+        <h3 class="section-title">Online Presence</h3>
+        <div class="form-group">
+          <label for="portfolioUrl">Portfolio URL</label>
+          <input type="url" id="portfolioUrl" placeholder="https://yourportfolio.com">
+        </div>
+        <div class="form-group">
+          <label for="githubUrl">GitHub Profile</label>
+          <input type="url" id="githubUrl" placeholder="https://github.com/yourname">
+        </div>
+        <div class="form-group">
+          <label for="linkedinUrl">LinkedIn Profile</label>
+          <input type="url" id="linkedinUrl" placeholder="https://linkedin.com/in/yourname">
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Voluntary Disclosure -->
+      <div class="section-card" id="voluntary-disclosure-section">
+        <h3 class="section-title">Voluntary Disclosure <span style="font-size:12px;color:#888;">(Optional)</span></h3>
+        <p style="color:#888;font-size:13px;margin-bottom:16px;">These optional fields help auto-fill diversity questionnaires on job applications.</p>
+        <div class="checkbox-row">
+          <input type="checkbox" id="wantToDisclose">
+          <label for="wantToDisclose">I want to provide voluntary disclosure information</label>
+        </div>
+        <div id="disclosureFields" style="display:none;margin-top:16px;">
+          <div class="form-group">
+            <label for="genderSelect">Gender</label>
+            <select id="genderSelect">
+              <option value="">Prefer not to say</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="non-binary">Non-binary</option>
+              <option value="prefer_to_specify">Prefer to specify</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="disabilityStatus">Disability Status</label>
+            <select id="disabilityStatus">
+              <option value="prefer_not_to_say">Prefer not to say</option>
+              <option value="yes">Yes, I have a disability</option>
+              <option value="no">No, I don't have a disability</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Common Application Questions -->
+      <div class="section-card" id="common-questions-section">
+        <h3 class="section-title">Common Application Questions</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="expectedSalary">Expected Salary</label>
+            <input type="text" id="expectedSalary" placeholder="e.g., $150,000 - $180,000">
+          </div>
+          <div class="form-group">
+            <label for="yearsOfLeadership">Years of Leadership Experience</label>
+            <input type="text" id="yearsOfLeadership" placeholder="e.g., 8 years">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="noticePeriod">Notice Period</label>
+            <input type="text" id="noticePeriod" placeholder="e.g., 2 weeks">
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;padding-top:24px;">
+            <div class="checkbox-row">
+              <input type="checkbox" id="willingToTravel">
+              <label for="willingToTravel">Willing to travel as needed</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <button class="btn-primary" id="saveResumeBtn">Save Resume</button>
+      <button class="btn-secondary" id="loadTestDataBtn" style="margin-left: 8px;">Load Test Data</button>
+      <button class="btn-secondary" id="clearFormBtn" style="margin-left: 8px;">Clear Form</button>
+      <div id="resumeStatus" class="status"></div>
+    </div>
+
+    <!-- ===== API KEY SECTION ===== -->
+    <div class="card" id="api-key">
+      <div class="card-title">Claude API Key</div>
+      <div class="card-desc">
+        Your API key is stored securely in your browser and never shared with external servers.
+        <a href="https://console.anthropic.com/account/keys" target="_blank" style="color: #4a9eff;">Get your API key</a>
+      </div>
+      <label for="apiKey">API Key</label>
+      <input type="text" id="apiKey" placeholder="sk-ant-...">
+      <div class="help-text">Starts with sk-ant-</div>
+      <button class="btn-primary" id="saveApiKeyBtn">Save API Key</button>
+      <div id="apiKeyStatus" class="status"></div>
+    </div>
+
+    <!-- ===== PREFERENCES SECTION ===== -->
+    <div class="card" id="preferences">
+      <div class="card-title">Preferences</div>
+      <div class="card-desc">Customize how the assistant generates cover letters and applications.</div>
+
+      <label for="coverLetterStyle">Cover Letter Tone</label>
+      <select id="coverLetterStyle">
+        <option value="professional">Professional &amp; Formal</option>
+        <option value="friendly">Friendly &amp; Approachable</option>
+        <option value="technical">Technical &amp; Direct</option>
+      </select>
+
+      <label for="emphasisAreas" style="margin-top:12px;">Areas to Emphasize in Applications (comma-separated)</label>
+      <textarea id="emphasisAreas" placeholder="e.g., Full-stack development, Healthcare domain, Leadership"></textarea>
+
+      <button class="btn-primary" id="savePreferencesBtn">Save Preferences</button>
+      <div id="preferencesStatus" class="status"></div>
+    </div>
+
+    <!-- ===== COMMON QUESTIONS SECTION ===== -->
+    <div class="card" id="questions">
+      <div class="card-title">Common Application Questions</div>
+      <div class="card-desc">Store answers to questions you're frequently asked. These will be reused across applications.</div>
+
+      <label for="questionText">Question</label>
+      <input type="text" id="questionText" placeholder="e.g., Why do you want to work at this company?">
+
+      <label for="answerText">Your Answer</label>
+      <textarea id="answerText" placeholder="Your answer here..."></textarea>
+
+      <button class="btn-primary" id="saveQuestionBtn">Save Question &amp; Answer</button>
+      <div id="questionStatus" class="status"></div>
+
+      <div id="questionList" style="margin-top: 16px;"></div>
+    </div>
+
+    <!-- ===== FORM LOGS SECTION ===== -->
+    <div class="card" id="form-logs">
+      <div class="card-title">Form Fill Logs</div>
+      <div class="card-desc">
+        Review what was filled and what was missed in past applications. Stored locally (last 50 entries).
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+        <button class="btn-primary" id="downloadLogsJsonBtn">⬇ Download JSON</button>
+        <button class="btn-secondary" id="downloadLogsTxtBtn">⬇ Download Text</button>
+        <button class="btn-secondary" id="clearLogsBtn" style="margin-left: auto; background: #3a1b1b; color: #ff6b6b; border: 1px solid #ff6b6b;">🗑 Clear Logs</button>
+      </div>
+
+      <div id="logsList" style="font-size: 13px; color: #aaa; max-height: 600px; overflow-y: auto;"></div>
+      <div id="logsStatus" class="status" style="margin-top: 8px;"></div>
+    </div>
+
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
