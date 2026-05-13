@@ -17,58 +17,64 @@ if (fs.existsSync(relativeFallback)) {
   } catch {}
 }
 
-const plugins = [
-  new CopyPlugin({
-    patterns: [
-      { from: 'manifest.json', to: 'manifest.json' },
-      { from: 'src/popup/popup.html', to: 'popup/popup.html' },
-      { from: 'src/popup/popup.css',  to: 'popup/popup.css'  },
-      { from: 'src/options/options.html', to: 'options/options.html' },
-      { from: 'images', to: 'images' }
-    ]
-  })
-];
+module.exports = (env = {}) => {
+  const isProd = !!env.production;
 
-if (externalTestDataPath) {
-  // Swap the committed stub with the real personal data file at build time.
-  plugins.push(new webpack.NormalModuleReplacementPlugin(
-    /utils[\\/]testDataStub$/,
-    externalTestDataPath
-  ));
-}
-
-module.exports = [
-  {
-    mode: 'development',
-    entry: {
-      popup: './src/popup/popup.ts',
-      content: './src/content/content.ts',
-      background: './src/background/background.ts',
-      options: './src/options/options.ts'
-    },
-    output: {
-      path: path.resolve(__dirname, 'dist'),
-      filename: '[name]/[name].js'
-    },
-    module: {
-      rules: [
-        {
-          test: /\.ts$/,
-          // transpileOnly skips full type-checking in webpack (use tsc --noEmit for that).
-          // Required so ts-loader can process files outside rootDir (e.g. the external data file).
-          use: { loader: 'ts-loader', options: { transpileOnly: true } },
-          exclude: /node_modules/
-        }
+  const plugins = [
+    new CopyPlugin({
+      patterns: [
+        { from: 'manifest.json', to: 'manifest.json' },
+        { from: 'src/popup/popup.html', to: 'popup/popup.html' },
+        { from: 'src/popup/popup.css',  to: 'popup/popup.css'  },
+        { from: 'src/options/options.html', to: 'options/options.html' },
+        { from: 'images', to: 'images' }
       ]
-    },
-    resolve: {
-      extensions: ['.ts', '.js'],
-      alias: {
-        // Lets the external data file import project types without a fragile relative path.
-        'jobext-types': path.resolve(__dirname, 'src/types')
-      }
-    },
-    devtool: 'source-map',
-    plugins
+    })
+  ];
+
+  if (!isProd && externalTestDataPath) {
+    // Swap the committed stub with the real personal data file at build time.
+    // Skipped in production builds so personal data is never bundled into store uploads.
+    plugins.push(new webpack.NormalModuleReplacementPlugin(
+      /utils[\\/]testDataStub$/,
+      externalTestDataPath
+    ));
   }
-];
+
+  return [
+    {
+      mode: isProd ? 'production' : 'development',
+      entry: {
+        popup: './src/popup/popup.ts',
+        content: './src/content/content.ts',
+        background: './src/background/background.ts',
+        options: './src/options/options.ts'
+      },
+      output: {
+        path: path.resolve(__dirname, 'dist'),
+        filename: '[name]/[name].js',
+        clean: isProd
+      },
+      module: {
+        rules: [
+          {
+            test: /\.ts$/,
+            // transpileOnly skips full type-checking in webpack (use tsc --noEmit for that).
+            // Required so ts-loader can process files outside rootDir (e.g. the external data file).
+            use: { loader: 'ts-loader', options: { transpileOnly: true } },
+            exclude: /node_modules/
+          }
+        ]
+      },
+      resolve: {
+        extensions: ['.ts', '.js'],
+        alias: {
+          // Lets the external data file import project types without a fragile relative path.
+          'jobext-types': path.resolve(__dirname, 'src/types')
+        }
+      },
+      devtool: isProd ? false : 'source-map',
+      plugins
+    }
+  ];
+};

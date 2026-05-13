@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "webpack",
+    "build:prod": "webpack --env production",
     "watch": "webpack --watch"
   },
   "keywords": [],
