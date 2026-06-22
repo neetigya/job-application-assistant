@@ -259,6 +259,18 @@
     .radio-group { display: flex; gap: 24px; margin-top: 6px; }
     .radio-label { display: flex; align-items: center; gap: 6px; color: #ccc; font-size: 14px; cursor: pointer; }
     .radio-label input[type=radio] { width: auto; accent-color: #4a9eff; }
+    .compliance-details { border: 1px solid #2a2a2a; border-radius: 8px; overflow: hidden; }
+    .compliance-details > summary {
+      padding: 14px 18px; font-size: 14px; font-weight: 600; color: #e0e0e0;
+      cursor: pointer; list-style: none; user-select: none;
+      display: flex; align-items: center;
+    }
+    .compliance-details > summary::-webkit-details-marker { display: none; }
+    .compliance-details > summary::after { content: '▶'; font-size: 11px; margin-left: auto; color: #666; transition: transform 0.2s; }
+    .compliance-details[open] > summary::after { transform: rotate(90deg); }
+    .compliance-details[open] > summary { border-bottom: 1px solid #2a2a2a; }
+    .compliance-body { padding: 20px; }
+    .compliance-note { color: #888; font-size: 13px; margin-bottom: 16px; }
   </style>
 </head>
 <body>
@@ -368,6 +380,7 @@
             <label class="radio-label"><input type="radio" name="currentlyEmployed" value="no"> No</label>
           </div>
         </div>
+
       </div>
 
       <hr class="section-divider">
@@ -448,34 +461,142 @@
 
       <hr class="section-divider">
 
-      <!-- Voluntary Disclosure -->
-      <div class="section-card" id="voluntary-disclosure-section">
-        <h3 class="section-title">Voluntary Disclosure <span style="font-size:12px;color:#888;">(Optional)</span></h3>
-        <p style="color:#888;font-size:13px;margin-bottom:16px;">These optional fields help auto-fill diversity questionnaires on job applications.</p>
-        <div class="checkbox-row">
-          <input type="checkbox" id="wantToDisclose">
-          <label for="wantToDisclose">I want to provide voluntary disclosure information</label>
-        </div>
-        <div id="disclosureFields" style="display:none;margin-top:16px;">
-          <div class="form-group">
-            <label for="genderSelect">Gender</label>
-            <select id="genderSelect">
-              <option value="">Prefer not to say</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="non-binary">Non-binary</option>
-              <option value="prefer_to_specify">Prefer to specify</option>
-            </select>
+      <!-- Legal & Compliance (EEO / Voluntary Self-ID) -->
+      <div class="section-card" id="compliance-section">
+        <details class="compliance-details" id="complianceDetails">
+          <summary>⚖️ Legal &amp; Compliance <span style="font-size:12px;font-weight:normal;color:#888;margin-left:6px;">(EEO / Voluntary Self-ID)</span></summary>
+          <div class="compliance-body">
+            <p class="compliance-note">Answered once, auto-filled on every job application. All fields are legally protected voluntary self-identification — except Work Authorization which is required by law to answer.</p>
+
+            <!-- Work Authorization -->
+            <h3 class="section-title" style="margin-top:4px;">Work Authorization</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="comp_isAuthorized">Are you legally authorized to work in the US? *</label>
+                <select id="comp_isAuthorized">
+                  <option value="">-- Select --</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+                <span class="field-error" id="err-comp_isAuthorized">Please select an option.</span>
+              </div>
+              <div class="form-group">
+                <label for="comp_requiresSponsorshipNow">Do you currently require visa sponsorship? *</label>
+                <select id="comp_requiresSponsorshipNow">
+                  <option value="">-- Select --</option>
+                  <option value="false">No, I don't need sponsorship now</option>
+                  <option value="true">Yes, I currently need sponsorship</option>
+                </select>
+                <span class="field-error" id="err-comp_requiresSponsorshipNow">Please select an option.</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="comp_requiresSponsorshipFuture">Will you require sponsorship in the future?</label>
+              <select id="comp_requiresSponsorshipFuture">
+                <option value="">-- Select / Unsure --</option>
+                <option value="false">No, I won't need it in the future</option>
+                <option value="true">Yes, I will need sponsorship in the future</option>
+              </select>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- Veteran Status -->
+            <h3 class="section-title">Veteran Status <span style="font-size:12px;font-weight:normal;color:#888;">(VEVRAA)</span></h3>
+            <div class="form-group">
+              <label for="comp_veteranStatus">What is your veteran status?</label>
+              <select id="comp_veteranStatus">
+                <option value="">-- Select --</option>
+                <option value="not_a_veteran">I am not a protected veteran</option>
+                <option value="protected_veteran">I am a protected veteran (general — covers all sub-types)</option>
+                <option value="disabled_veteran">Disabled Veteran</option>
+                <option value="recently_separated_veteran">Recently Separated Veteran (discharged within last 3 years)</option>
+                <option value="active_duty_wartime_veteran">Active Duty Wartime / Campaign Badge Veteran</option>
+                <option value="armed_forces_medal_veteran">Armed Forces Service Medal Veteran</option>
+                <option value="prefer_not_to_say">I prefer not to say</option>
+              </select>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- Disability Status -->
+            <h3 class="section-title">Disability Status <span style="font-size:12px;font-weight:normal;color:#888;">(Section 503)</span></h3>
+            <div class="form-group">
+              <label for="comp_disabilityStatus">What is your disability status?</label>
+              <select id="comp_disabilityStatus">
+                <option value="">-- Select --</option>
+                <option value="no_disability">No, I do not have a disability (and have not had one in the past)</option>
+                <option value="yes_have_disability">Yes, I have a disability (or have had one in the past)</option>
+                <option value="prefer_not_to_say">I prefer not to say</option>
+              </select>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- Gender Identity -->
+            <h3 class="section-title">Gender Identity</h3>
+            <div class="form-group">
+              <label for="comp_genderIdentity">How do you identify your gender?</label>
+              <select id="comp_genderIdentity">
+                <option value="">-- Select --</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="non_binary">Non-Binary</option>
+                <option value="prefer_not_to_say">Prefer not to say / Decline to identify</option>
+                <option value="self_describe">Self-describe →</option>
+              </select>
+            </div>
+            <div class="form-group" id="comp_genderSelfDescribeLabel" style="display:none;">
+              <label for="comp_genderSelfDescribe">Describe your gender identity:</label>
+              <input type="text" id="comp_genderSelfDescribe" placeholder="e.g., Genderqueer, Agender...">
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- Race / Ethnicity -->
+            <h3 class="section-title">Race / Ethnicity <span style="font-size:12px;font-weight:normal;color:#888;">(EEO-1)</span></h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="comp_isHispanicLatino">Are you Hispanic or Latino?</label>
+                <select id="comp_isHispanicLatino">
+                  <option value="">-- Select --</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                  <option value="prefer_not_to_say">Prefer not to say</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="comp_raceEthnicity">What is your race/ethnicity?</label>
+                <select id="comp_raceEthnicity">
+                  <option value="">-- Select --</option>
+                  <option value="american_indian_alaskan_native">American Indian or Alaskan Native</option>
+                  <option value="asian">Asian</option>
+                  <option value="black_african_american">Black or African American</option>
+                  <option value="hispanic_latino">Hispanic or Latino</option>
+                  <option value="white">White</option>
+                  <option value="native_hawaiian_pacific_islander">Native Hawaiian or Other Pacific Islander</option>
+                  <option value="two_or_more_races">Two or More Races</option>
+                  <option value="prefer_not_to_say">I prefer not to answer</option>
+                </select>
+              </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- LGBTQ+ (truly optional) -->
+            <h3 class="section-title">Sexual Orientation <span style="font-size:12px;font-weight:normal;color:#888;">(Truly optional — some companies ask voluntarily)</span></h3>
+            <div class="form-group">
+              <label for="comp_lgbtqIdentity">Sexual orientation <small style="color:#888;">(leave blank to skip on all applications)</small></label>
+              <select id="comp_lgbtqIdentity">
+                <option value="">Leave blank (skip on all applications)</option>
+                <option value="heterosexual">Heterosexual / Straight</option>
+                <option value="gay_lesbian">Gay or Lesbian</option>
+                <option value="bisexual">Bisexual</option>
+                <option value="prefer_not_to_say">Prefer not to say</option>
+              </select>
+            </div>
           </div>
-          <div class="form-group">
-            <label for="disabilityStatus">Disability Status</label>
-            <select id="disabilityStatus">
-              <option value="prefer_not_to_say">Prefer not to say</option>
-              <option value="yes">Yes, I have a disability</option>
-              <option value="no">No, I don't have a disability</option>
-            </select>
-          </div>
-        </div>
+        </details>
       </div>
 
       <hr class="section-divider">

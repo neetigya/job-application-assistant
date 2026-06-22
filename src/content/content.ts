@@ -179,6 +179,8 @@ function extractJobData(): JobData | null {
     result = extractAshbyJob();
   } else if (url.includes('pinpointhq.com')) {
     result = extractPinpointJob();
+  } else if (url.includes('greenhouse.io')) {
+    result = extractGreenhouseJob();
   }
 
   if (!result || (!result.title && !result.description)) {
@@ -374,6 +376,39 @@ function extractPinpointJob(): JobData | null {
   }
 }
 
+// Greenhouse extraction — handles job-boards.greenhouse.io and boards.greenhouse.io
+// HTML structure (2024+): <main class="main job-post"> with <h1 class="section-header">
+// inside .job__title, and description in <div class="job__description body">
+function extractGreenhouseJob(): JobData | null {
+  try {
+    const title = first(
+      getText('.job__title h1'),
+      getText('.job__title'),
+      getText('h1.app-title'),
+      getText('.app-title'),
+      getText('h1')
+    );
+    // Logo alt text: "Headspace Logo" → strip " Logo"
+    const logoAlt = (document.querySelector('.logo img, img[alt*="Logo"]') as HTMLImageElement)?.alt || '';
+    const logoCompany = logoAlt.replace(/\s*logo\s*/i, '').trim();
+    // Page title: "Role at Company - Greenhouse" or "Role | Company | Greenhouse"
+    const rawTitle = document.title || '';
+    const fromTitle = rawTitle.match(/ at ([^|–\-]+?)(?:\s*[-–|]|\s*$)/i)?.[1]?.trim() || '';
+    const company = first(logoCompany, fromTitle, getText('.company-name'));
+    const description = first(
+      getText('.job__description'),          // 2024+ Greenhouse: class="job__description body"
+      getText('#content'),                   // older Greenhouse
+      getText('.job-post__description'),
+      getText('[class*="job-description"]'),
+      getText('main')
+    );
+    if (!title && !description) return null;
+    return { title, company: company || '', description, url: window.location.href };
+  } catch (e) {
+    return null;
+  }
+}
+
 // Generic fallback — works on most job boards
 function extractGenericJob(): JobData | null {
   try {
@@ -491,6 +526,308 @@ function detectPageType(): 'jobPosting' | 'applicationForm' | 'unknown' {
   }
 
   return 'unknown';
+}
+
+// Returns true if this text input is the typing element inside a custom select component.
+// React Select and similar libraries put role="combobox", aria-haspopup, aria-expanded
+// directly on the typing input (not on a container), so we check both the input itself
+// AND walk up ancestors for structural indicators.
+function isCustomSelectInput(input: HTMLInputElement): boolean {
+  if (input.getAttribute('aria-hidden') === 'true') return false;
+  // Signals directly on the input (React Select, Downshift, Headless UI)
+  if (
+    input.getAttribute('role') === 'combobox' ||
+    input.getAttribute('aria-haspopup') !== null ||
+    input.hasAttribute('aria-expanded')
+  ) return true;
+  // Structural signal: nearest ancestor contains a dropdown indicator
+  let ancestor: Element | null = input.parentElement;
+  for (let depth = 0; depth < 8 && ancestor && ancestor !== document.body; depth++) {
+    if (ancestor.hasAttribute('aria-expanded')) return true;
+    if (ancestor.getAttribute('role') === 'combobox') return true;
+    if (ancestor.querySelector('[class*="indicator"]:not([aria-hidden="true"])')) return true;
+    ancestor = ancestor.parentElement;
+  }
+  return false;
+}
+
+// Walk up from a text input to find the best clickable container for the custom select.
+// Falls back to the nearest parent element if no decorated container is found.
+function findCustomSelectContainer(input: HTMLInputElement): Element | null {
+  if (input.getAttribute('aria-hidden') === 'true') return null;
+  if (!isCustomSelectInput(input)) return null;
+
+  let ancestor: Element | null = input.parentElement;
+  for (let depth = 0; depth < 8 && ancestor && ancestor !== document.body; depth++) {
+    if (ancestor.hasAttribute('aria-expanded')) return ancestor;
+    if (ancestor.getAttribute('role') === 'combobox') return ancestor;
+    if (ancestor.querySelector('[class*="indicator"]:not([aria-hidden="true"])')) return ancestor;
+    ancestor = ancestor.parentElement;
+  }
+  // Input has combobox signals but no decorated container — use its direct parent.
+  return input.parentElement;
+}
+
+// Returns all [role="option"] elements that are currently visible on screen.
+function getVisibleRoleOptions(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).filter(opt => {
+    if (opt.getAttribute('aria-hidden') === 'true') return false;
+    const rect = opt.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+}
+
+// Open a custom select dropdown and click the best-matching option.
+// Takes the typing input directly so we can use keyboard events (most reliable for React Select).
+// Falls back to mousedown on the container if keyboard doesn't open the menu.
+// keywords: ordered list — tries each against visible options, picks the first hit.
+async function activateCustomSelect(
+  typingInput: HTMLInputElement,
+  container: Element,
+  keywords: string[]
+): Promise<boolean> {
+
+  // Attempt 1: focus the input and press ArrowDown — this is how React Select
+  // opens the menu in response to keyboard input (isTrusted is not required here).
+  typingInput.focus();
+  typingInput.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'ArrowDown', keyCode: 40, which: 40, bubbles: true, cancelable: true,
+  }));
+
+  await new Promise(r => setTimeout(r, 500));
+  let options = getVisibleRoleOptions();
+
+  if (!options.length) {
+    // Attempt 2: mousedown on the container (React Select also opens on mousedown).
+    // Fire mousedown BEFORE click — wrong order would open then immediately close.
+    container.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true, view: window,
+    }));
+    container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, view: window }));
+
+    await new Promise(r => setTimeout(r, 500));
+    options = getVisibleRoleOptions();
+  }
+
+  if (!options.length) {
+    typingInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    typingInput.blur();
+    return false;
+  }
+
+  let match: HTMLElement | undefined;
+  for (const kw of keywords) {
+    match = options.find(opt => matchesKeyword((opt.textContent || '').trim(), kw));
+    if (match) break;
+  }
+  if (match) {
+    match.click();
+    return true;
+  }
+
+  // No match — close the dropdown cleanly.
+  typingInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  typingInput.blur();
+  return false;
+}
+
+// ─── Shared option-matching helpers ──────────────────────────────────────────
+
+// Fuzzy option text matching used by both native <select> and custom dropdowns.
+// Tries: exact → starts-with → contains → "prefer not" synonym group.
+function matchesKeyword(optionText: string, keyword: string): boolean {
+  const text = optionText.toLowerCase().trim();
+  const k = keyword.toLowerCase().trim();
+  if (!k || !text) return false;
+  if (text === k) return true;
+  if (text.startsWith(k)) return true;
+  if (text.includes(k)) return true;
+  // All "prefer not / decline / don't wish" variants are treated as equivalent
+  if (/^(prefer.?not|decline|i.?don.?t wish|do not wish|choose not|not wish|i prefer not)/i.test(k)) {
+    return /prefer.?not|decline|don.?t wish|do not wish|choose not|not wish to|i prefer not/i.test(text);
+  }
+  return false;
+}
+
+// Convert a stored resume value to the keyword used for option matching.
+function toMatchKeyword(value: string): string {
+  if (!value) return '';
+  const v = value.toLowerCase().trim();
+  if (v === 'prefer_not_to_say') return 'prefer not to say';
+  return v;
+}
+
+// ─── Compliance keyword maps ──────────────────────────────────────────────────
+// Each stored enum value maps to ordered keyword phrases. The filling logic tries
+// them in priority order; the first option text that includes the phrase wins.
+
+const VETERAN_KEYWORDS: Record<string, string[]> = {
+  not_a_veteran:               ['not a protected veteran', 'not a veteran', 'i am not'],
+  protected_veteran:           ['one or more classifications', 'i identify as', 'protected veteran'],
+  disabled_veteran:            ['disabled veteran'],
+  recently_separated_veteran:  ['recently separated'],
+  active_duty_wartime_veteran: ['active duty wartime', 'campaign badge'],
+  armed_forces_medal_veteran:  ['armed forces service medal', 'service medal'],
+  prefer_not_to_say:           ["don't wish", 'do not wish', 'prefer not', 'decline', 'i don\'t want'],
+};
+
+const DISABILITY_KEYWORDS: Record<string, string[]> = {
+  yes_have_disability: ['yes, i have', 'have had one', 'i have a disability'],
+  no_disability:       ["i don't have", 'i do not have', 'no, i do not', "no, i don't"],
+  prefer_not_to_say:   ["don't wish", 'do not wish', 'prefer not', 'decline'],
+};
+
+const GENDER_KEYWORDS: Record<string, string[]> = {
+  male:              ['male', 'man'],
+  female:            ['female', 'woman'],
+  non_binary:        ['non-binary', 'nonbinary', 'non binary', 'gender non-conforming', 'genderqueer'],
+  prefer_not_to_say: ['decline', 'prefer not', "don't wish", 'do not wish', 'withhold'],
+  self_describe:     ['self-describe', 'self describe', 'other (describe)', 'write in'],
+};
+
+const RACE_KEYWORDS: Record<string, string[]> = {
+  american_indian_alaskan_native:   ['american indian', 'alaskan native', 'alaska native'],
+  asian:                            ['asian'],
+  black_african_american:           ['black', 'african american'],
+  hispanic_latino:                  ['hispanic', 'latino', 'latina'],
+  white:                            ['white', 'caucasian'],
+  native_hawaiian_pacific_islander: ['native hawaiian', 'pacific islander'],
+  two_or_more_races:                ['two or more', 'multiracial', 'mixed'],
+  prefer_not_to_say:                ['decline', 'prefer not', "don't wish", 'do not wish'],
+};
+
+const LGBTQ_KEYWORDS: Record<string, string[]> = {
+  heterosexual:    ['heterosexual', 'straight'],
+  gay_lesbian:     ['gay', 'lesbian'],
+  bisexual:        ['bisexual'],
+  prefer_not_to_say: ['decline', 'prefer not', "don't wish"],
+};
+
+// Returns the fill target for well-known demographic/legal fields, or null if unknown.
+// Keywords is an ordered array — callers try each in sequence and use the first match.
+// Returning null means "skip this field entirely" (e.g., LGBTQ when user opted out).
+function getKnownFieldValue(hint: string, resumeData: any): { keywords: string[]; label: string } | null {
+  const c = resumeData?.compliance;
+  const p = resumeData?.personal;
+  const vd = resumeData?.voluntaryDisclosure;
+
+  // ── Work Authorization ───────────────────────────────────────────────────────
+  // Combined "authorized AND no sponsorship needed" question (rare)
+  if (/authoriz.*work|work.*authoriz|legally.*work|legal.*right.*work/i.test(hint) &&
+      /sponsor/i.test(hint)) {
+    const auth = c?.workAuthorization?.isAuthorized ?? p?.workAuthorization ?? true;
+    const reqNow = c?.workAuthorization?.requiresSponsorshipNow ?? p?.requiresSponsorship ?? false;
+    const answer = (auth && !reqNow) ? 'yes' : 'no';
+    return { keywords: [answer], label: 'Work Auth (combined)' };
+  }
+
+  if (/authoriz.*work|work.*authoriz|legally.*work|legal.*right.*work|right.?to.?work|work.?permit|eligible.*work|work.?eligib|permitted.*work|can.*legally.*work|able.*legally.*work/i.test(hint)) {
+    const val = c?.workAuthorization?.isAuthorized ?? p?.workAuthorization ?? true;
+    return { keywords: [val ? 'yes' : 'no'], label: 'Work Authorization' };
+  }
+
+  // ── Visa Sponsorship ─────────────────────────────────────────────────────────
+  // "now" or "currently" → use requiresSponsorshipNow; "future" → requiresSponsorshipFuture
+  if (/(?:visa|employment|work|immigration).*sponsor|sponsor.*(?:visa|employment|work)|require.*sponsor|need.*sponsor|sponsorship.*(?:employ|work|visa)/i.test(hint)) {
+    const isFuture = /future|will.*need|anticipat/i.test(hint);
+    const isNow    = /now|current|presently/i.test(hint);
+    let val: boolean;
+    if (isFuture && !isNow) {
+      val = c?.workAuthorization?.requiresSponsorshipFuture ?? p?.requiresSponsorship ?? false;
+    } else {
+      val = c?.workAuthorization?.requiresSponsorshipNow ?? p?.requiresSponsorship ?? false;
+    }
+    return { keywords: [val ? 'yes' : 'no'], label: 'Visa Sponsorship' };
+  }
+
+  // ── Veteran Status ────────────────────────────────────────────────────────────
+  if (/veteran|military.?status|protected.?veteran|armed.?force|vevraa|military.?service|served.*u\.?s|have.*served/i.test(hint)) {
+    const status = c?.veteranStatus ?? (vd?.veteranStatus ? 'not_a_veteran' : null);
+    if (!status) return null;
+    return { keywords: VETERAN_KEYWORDS[status] ?? ['prefer not'], label: 'Veteran Status' };
+  }
+
+  // ── Disability Status ─────────────────────────────────────────────────────────
+  if (/disabilit|differently.?able|physical.*mental.*impairment|section.?503|ada.*disabilit/i.test(hint)) {
+    const status = c?.disabilityStatus ?? (vd?.disabilityStatus === 'yes' ? 'yes_have_disability' : vd?.disabilityStatus === 'no' ? 'no_disability' : c ? 'prefer_not_to_say' : null);
+    if (!status) return null;
+    return { keywords: DISABILITY_KEYWORDS[status] ?? ['prefer not'], label: 'Disability Status' };
+  }
+
+  // ── Gender ────────────────────────────────────────────────────────────────────
+  if (/\bgender\b|\bgender.?identity\b|\bsex\b/i.test(hint) && !/sex.*offend|sex.*harass/i.test(hint)) {
+    const gender = c?.genderIdentity ?? (vd?.gender ? (vd.gender === 'non-binary' ? 'non_binary' : vd.gender) : null);
+    if (!gender) return null;
+    return { keywords: GENDER_KEYWORDS[gender] ?? ['prefer not'], label: 'Gender' };
+  }
+
+  // ── Hispanic / Latino ─────────────────────────────────────────────────────────
+  if (/hispanic|latina?o|spanish.?origin/i.test(hint)) {
+    if (c) {
+      const val = c.isHispanicLatino;
+      if (val === undefined) return null;
+      return { keywords: [val ? 'yes' : 'no'], label: 'Hispanic/Latino' };
+    }
+    if (vd?.hispanicLatino) {
+      return { keywords: [toMatchKeyword(vd.hispanicLatino)], label: 'Hispanic/Latino' };
+    }
+    return null;
+  }
+
+  // ── Race / Ethnicity ──────────────────────────────────────────────────────────
+  if (/\brace\b|\bracial\b|\bethnicity\b|\bethnic\b/i.test(hint) && !/hispanic|latino/i.test(hint)) {
+    const race = c?.raceEthnicity ?? (vd?.race ? 'prefer_not_to_say' : null);
+    if (!race) return null;
+    return { keywords: RACE_KEYWORDS[race] ?? ['prefer not'], label: 'Race/Ethnicity' };
+  }
+
+  // ── LGBTQ+ / Sexual Orientation ───────────────────────────────────────────────
+  if (/sexual.?orientation|lgbtq/i.test(hint)) {
+    // null means user chose to skip — return null so the field is not filled
+    if (!c || c.lgbtqIdentity === null || c.lgbtqIdentity === undefined) return null;
+    return { keywords: LGBTQ_KEYWORDS[c.lgbtqIdentity] ?? ['prefer not'], label: 'Sexual Orientation' };
+  }
+
+  // ── Relocation / Commute ──────────────────────────────────────────────────────
+  if (/relocat/i.test(hint)) return { keywords: [p?.willingToRelocate ? 'yes' : 'no'], label: 'Relocation' };
+  if (/commut/i.test(hint)) return { keywords: [p?.ableToCommute ? 'yes' : 'no'], label: 'Commute' };
+
+  return null;
+}
+
+// Fill native <select> elements using the known-field registry plus resume data.
+function fillSelectElements(resumeData: any): FieldLogEntry[] {
+  const logs: FieldLogEntry[] = [];
+  const selects = document.querySelectorAll<HTMLSelectElement>('select');
+
+  selects.forEach(select => {
+    if (select.disabled) return;
+    const hint = getFieldHint(select);
+    const label = getFieldLabel(select);
+
+    const known = getKnownFieldValue(hint, resumeData);
+    if (!known) {
+      logs.push({ fieldName: select.name, fieldType: 'select', fieldLabel: label, fieldHint: hint.slice(0, 120), filled: false, value: null, reason: 'No matching pattern for select' });
+      return;
+    }
+
+    let matchingOption: HTMLOptionElement | undefined;
+    for (const kw of known.keywords) {
+      matchingOption = Array.from(select.options).find(o => matchesKeyword(o.text, kw));
+      if (matchingOption) break;
+    }
+
+    if (matchingOption) {
+      select.value = matchingOption.value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      logger.debug(`✓ Select "${label}" (${known.label}) → "${matchingOption.text}"`);
+      logs.push({ fieldName: select.name, fieldType: 'select', fieldLabel: label, fieldHint: hint.slice(0, 120), filled: true, value: matchingOption.text, reason: null });
+    } else {
+      logs.push({ fieldName: select.name, fieldType: 'select', fieldLabel: label, fieldHint: hint.slice(0, 120), filled: false, value: null, reason: `No option matched [${known.keywords.join(', ')}] for ${known.label}` });
+    }
+  });
+
+  return logs;
 }
 
 // Trigger React/Vue synthetic events so frameworks pick up the value change
@@ -611,6 +948,9 @@ function fillApplicationForm(resumeData: any): FillResult {
 
   inputs.forEach((input) => {
     if ((input as HTMLInputElement).readOnly || input.disabled) return;
+    // Skip React Select / custom-select typing inputs — these are handled by fillOpenEndedWithAI
+    // via the known-field path. Filling them here with setNativeValue produces wrong text.
+    if (input instanceof HTMLInputElement && isCustomSelectInput(input)) return;
     const hint = getFieldHint(input);
 
     // Skip reCAPTCHA and other system fields
@@ -749,14 +1089,12 @@ function fillRadioGroups(resumeData: any): FieldLogEntry[] {
     let targetValue: 'yes' | 'no' | null = null;
     let matchedReason: string | null = null;
 
-    if (/sponsor|visa/i.test(hint)) {
-      targetValue = 'no';
-    } else if (/authoriz|eligible.?work|legally.?allowed|work.?permit|right.?to.?work/i.test(hint)) {
-      targetValue = 'yes';
-    } else if (/relocat/i.test(hint)) {
-      targetValue = p?.willingToRelocate ? 'yes' : 'no';
-    } else if (/commut/i.test(hint)) {
-      targetValue = p?.ableToCommute ? 'yes' : 'no';
+    // Use the shared known-field registry so radio groups stay in sync with
+    // select elements and the user's resume data (no more hardcoded defaults).
+    const known = getKnownFieldValue(hint, resumeData);
+    const yesOrNo = known?.keywords.find(k => k === 'yes' || k === 'no');
+    if (yesOrNo) {
+      targetValue = yesOrNo as 'yes' | 'no';
     } else {
       matchedReason = 'No matching pattern for radio group';
     }
@@ -859,20 +1197,28 @@ function requestAIAnswer(params: {
   });
 }
 
-// Second pass: fill any empty textarea/text fields that look like open-ended questions
+// Second pass: fill any empty textarea/text/combobox fields that look like open-ended questions
 async function fillOpenEndedWithAI(
   result: FillResult,
+  resumeData: any,
   resumeContent: string,
   jobDescription: string
 ): Promise<void> {
-  // Include both textarea and text inputs — Ashby renders open-ended fields as input[type=text]
+  // Exclude aria-hidden inputs — these are hidden native backing inputs used by custom
+  // select libraries for form submission only. Do NOT also exclude tabindex="-1" because
+  // React Select's typing input may legitimately have tabindex="-1" in some configurations.
   const candidates = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
-    'textarea, input[type="text"], input:not([type])'
+    'textarea, input[type="text"]:not([aria-hidden="true"]), input:not([type]):not([aria-hidden="true"])'
   );
 
   for (const el of Array.from(candidates)) {
     if (el.value.trim() || (el as HTMLInputElement).readOnly || el.disabled) continue;
     if (/recaptcha|g-recaptcha|captcha/.test(el.name + el.id)) continue;
+
+    const isInputEl = el instanceof HTMLInputElement;
+    // Detect if this input lives inside a custom select/dropdown component
+    const selectContainer = isInputEl ? findCustomSelectContainer(el as HTMLInputElement) : null;
+    const isDropdown = selectContainer !== null;
 
     const fieldType = el instanceof HTMLTextAreaElement ? 'textarea' : 'text';
     // Use the rich hint (which includes ancestor label text) for detection
@@ -880,15 +1226,34 @@ async function fillOpenEndedWithAI(
     const label = getFieldLabel(el) || el.placeholder || richHint.split(' ').slice(0, 8).join(' ');
     const hint = el.placeholder || '';
 
-    if (!isLikelyOpenQuestion(richHint, '', fieldType)) continue;
+    // Custom selects: try AI for any labelled question field.
+    // Plain text fields: only try if they look like an open question.
+    if (!isDropdown && !isLikelyOpenQuestion(richHint, '', fieldType)) continue;
 
     const detected = detectQuestionType(richHint, '');
-    if (!detected.shouldTryAI) continue;
+    if (!isDropdown && !detected.shouldTryAI) continue;
 
-    logger.debug(`AI attempting: "${richHint.slice(0, 60)}"`);
+    // For custom dropdowns: check known fields first (work auth, sponsorship, gender,
+    // Hispanic, race, veteran, disability) — no AI call needed for these.
+    if (isDropdown && selectContainer) {
+      const known = getKnownFieldValue(richHint, resumeData);
+      if (known) {
+        logger.debug(`Known-field fill (custom-select) "${known.label}": keyword="${known.keyword}"`);
+        const filled = await activateCustomSelect(el as HTMLInputElement, selectContainer, known.keywords);
+        if (filled) {
+          const fieldName = el.name || el.id || '';
+          result.fields.push({ fieldName, fieldType: 'select', fieldLabel: label, fieldHint: hint, filled: true, value: known.keyword, reason: `Known field: ${known.label}` });
+        } else {
+          logger.debug(`✗ Known-field: no matching option for "${known.label}" keyword="${known.keyword}"`);
+        }
+        continue; // don't call AI for these fields
+      }
+    }
+
+    logger.debug(`AI attempting${isDropdown ? ' (custom-select)' : ''}: "${richHint.slice(0, 60)}"`);
 
     const aiResponse = await requestAIAnswer({
-      fieldLabel: richHint.slice(0, 200), // send the full hint as the question for context
+      fieldLabel: richHint.slice(0, 200),
       fieldHint: hint,
       resumeContent,
       jobDescription,
@@ -900,7 +1265,24 @@ async function fillOpenEndedWithAI(
       continue;
     }
 
-    setNativeValue(el, aiResponse.answer);
+    let filled = false;
+
+    if (isDropdown && selectContainer) {
+      // Click through the dropdown to select the matching option ("Yes", "No", etc.)
+      // rather than typing the full AI-generated paragraph into the search input.
+      // For AI answers: extract first keyword (e.g. "Yes, I am authorized" → "yes")
+      const aiKeyword = aiResponse.answer.trim().split(/[\s,!.;:]/)[0].toLowerCase();
+      filled = await activateCustomSelect(el as HTMLInputElement, selectContainer, [aiKeyword]);
+      if (!filled) {
+        logger.debug(`✗ Custom-select: no matching option for "${label.slice(0, 60)}"`);
+        continue;
+      }
+    } else {
+      setNativeValue(el, aiResponse.answer);
+      filled = true;
+    }
+    // (note: known-field pre-check is handled above before the AI call)
+
     logger.debug(`✓ AI filled "${label.slice(0, 60)}" (${aiResponse.questionType}, ${aiResponse.confidence}%)`);
 
     // Update existing log entry if present, otherwise add one
@@ -917,7 +1299,7 @@ async function fillOpenEndedWithAI(
     } else {
       result.fields.push({
         fieldName,
-        fieldType,
+        fieldType: isDropdown ? 'select' : fieldType,
         fieldLabel: label,
         fieldHint: hint,
         filled: true,
@@ -930,15 +1312,110 @@ async function fillOpenEndedWithAI(
   }
 }
 
+function requestCoverLetterGeneration(
+  resumeContent: string,
+  jobDescription: string,
+  companyName: string,
+  jobTitle: string
+): Promise<string> {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage(
+      { action: 'generateCoverLetter', resumeContent, jobDescription, companyName, jobTitle },
+      (response) => {
+        if (chrome.runtime.lastError) resolve('');
+        else resolve(response?.coverLetter || '');
+      }
+    );
+  });
+}
+
+// Returns true if el is inside a "Cover Letter" section (not a Resume/CV section).
+function isInCoverLetterSection(el: Element): boolean {
+  let ancestor: Element | null = el.parentElement;
+  let seenCoverLetter = false;
+  for (let depth = 0; depth < 15 && ancestor && ancestor !== document.body; depth++) {
+    const headings = ancestor.querySelectorAll('h1,h2,h3,h4,h5,h6,label,legend,strong');
+    for (const h of Array.from(headings)) {
+      const t = (h.textContent || '').toLowerCase();
+      if (/cover\s*letter/i.test(t)) seenCoverLetter = true;
+      // If a heading explicitly says "resume" or "cv" (but not inside a "cover letter" phrase),
+      // this is the resume upload section — bail.
+      if (/\bresume\b|\bcv\b|curriculum\s+vitae/i.test(t) && !/cover/i.test(t)) return false;
+    }
+    ancestor = ancestor.parentElement;
+  }
+  return seenCoverLetter;
+}
+
+// Find the "Enter manually" button that belongs to the Cover Letter section.
+function findCoverLetterEnterManuallyButton(): HTMLElement | null {
+  const buttons = Array.from(document.querySelectorAll<HTMLElement>(
+    'button, [role="button"], a'
+  )).filter(el => {
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && /enter\s+manually/i.test(el.textContent || '');
+  });
+  return buttons.find(isInCoverLetterSection) || null;
+}
+
+async function fillCoverLetterField(
+  result: FillResult,
+  resumeContent: string,
+  jobDescription: string
+): Promise<void> {
+  const btn = findCoverLetterEnterManuallyButton();
+  if (!btn) return;
+
+  // Snapshot which textareas exist before clicking
+  const beforeSet = new Set(Array.from(document.querySelectorAll('textarea')));
+
+  btn.click();
+  await new Promise(r => setTimeout(r, 900));
+
+  // Prefer a newly-inserted empty textarea; fall back to any visible empty one
+  const allTextareas = Array.from(document.querySelectorAll<HTMLTextAreaElement>('textarea'));
+  let ta = allTextareas.find(t => !beforeSet.has(t) && !t.value.trim());
+  if (!ta) {
+    ta = allTextareas.find(t => {
+      if (t.value.trim() || t.disabled || t.readOnly) return false;
+      const r = t.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    });
+  }
+  if (!ta) return;
+
+  const coverLetter = await requestCoverLetterGeneration(
+    resumeContent, jobDescription, result.company, result.jobTitle
+  );
+  if (!coverLetter) return;
+
+  setNativeValue(ta, coverLetter);
+
+  result.fields.push({
+    fieldName: 'cover_letter',
+    fieldType: 'textarea',
+    fieldLabel: 'Cover Letter',
+    fieldHint: '',
+    filled: true,
+    value: coverLetter.slice(0, 80) + '...',
+    reason: 'AI-generated cover letter',
+    generatedByAI: true,
+    confidence: 85,
+  });
+}
+
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'getJobData') {
-    // Return best job data we can extract from the current page
+    // Only respond from the main frame — iframes on the same tab also receive this
+    // message (all_frames:true) and would race to respond first with null job data.
+    if (window !== window.top) return;
     const jobData = extractJobData();
     sendResponse({ jobData });
 
   } else if (request.action === 'detectPageType') {
+    if (window !== window.top) return;
     const pageType = detectPageType();
     const jobData = pageType === 'jobPosting' ? extractJobData() : null;
     sendResponse({ context: { type: pageType, jobData } });
@@ -947,17 +1424,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     logger.debug('Form filling triggered. Has description:', request.hasDescription || false);
     const resumeData = request.resumeData || request.resume;
     const result = fillApplicationForm(resumeData);
+    const selectLogs = fillSelectElements(resumeData);
+    result.fields.push(...selectLogs);
     const resumeText: string = request.resume || '';
     const jobDescription: string = request.jobData?.description || '';
 
-    fillOpenEndedWithAI(result, resumeText, jobDescription).then(() => {
-      const filled = result.fields.filter(f => f.filled).length;
-      const total  = result.fields.length;
-      showFillNotification(filled, total);
-      sendResponse({ success: true, ...result, devMode: isDev(), testOnlyField: getDevConfig().testOnlyField });
-    });
+    fillOpenEndedWithAI(result, resumeData, resumeText, jobDescription)
+      .then(() => fillCoverLetterField(result, resumeText, jobDescription))
+      .then(() => {
+        const filled = result.fields.filter(f => f.filled).length;
+        const total  = result.fields.length;
+        showFillNotification(filled, total);
+        sendResponse({ success: true, ...result, devMode: isDev(), testOnlyField: getDevConfig().testOnlyField });
+      });
     return true; // keep channel open for async response
   }
 });
 
-logger.info('Content script loaded on', window.location.href);
+//logger.info('Content script loaded on', window.location.href);

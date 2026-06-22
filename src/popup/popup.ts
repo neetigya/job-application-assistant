@@ -85,13 +85,18 @@ async function getActiveTabId(): Promise<number | null> {
   return tab?.id ?? null;
 }
 
-async function getJobDataFromPage(): Promise<JobData | null> {
+async function getJobDataFromPage(): Promise<{ jobData: JobData | null; scriptNotLoaded: boolean }> {
   const tabId = await getActiveTabId();
-  if (!tabId) return null;
+  if (!tabId) return { jobData: null, scriptNotLoaded: false };
   return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, { action: 'getJobData' }, (response) => {
-      if (chrome.runtime.lastError) { resolve(null); return; }
-      resolve(response?.jobData || null);
+    // frameId: 0 = main frame only — prevents iframes (reCAPTCHA etc.) from racing
+    // to respond first with null job data when all_frames:true is set in the manifest.
+    chrome.tabs.sendMessage(tabId, { action: 'getJobData' }, { frameId: 0 }, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve({ jobData: null, scriptNotLoaded: true });
+        return;
+      }
+      resolve({ jobData: response?.jobData || null, scriptNotLoaded: false });
     });
   });
 }
@@ -105,16 +110,30 @@ async function requestMatchAnalysis(resumeText: string, jobData: JobData): Promi
   });
 }
 
+async function requestCoverLetter(resumeText: string, jobDescription: string, company: string, jobTitle: string, question?: string): Promise<string> {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({
+      action: 'generateCoverLetter',
+      resumeContent: resumeText,
+      jobDescription,
+      companyName: company,
+      jobTitle,
+      question,
+    }, (response) => resolve(response?.coverLetter || ''));
+  });
+}
+
 // ── UI state machine ──────────────────────────────────────────────────────────
 
-type View = 'menu' | 'formFill' | 'analysis' | 'error';
+type View = 'menu' | 'formFill' | 'analysis' | 'coverLetter' | 'error';
 
 function showView(view: View) {
   const map: Record<View, string> = {
-    menu:     'buttonContainer',
-    formFill: 'formFillContainer',
-    analysis: 'analysisContainer',
-    error:    'errorContainer',
+    menu:        'buttonContainer',
+    formFill:    'formFillContainer',
+    analysis:    'analysisContainer',
+    coverLetter: 'coverLetterContainer',
+    error:       'errorContainer',
   };
   Object.entries(map).forEach(([v, id]) => {
     document.getElementById(id)!.classList.toggle('hidden', v !== view);
@@ -182,23 +201,21 @@ function triggerFormFill(resume: ResumeData, jobData: JobData | null, hasDescrip
       resultEl.classList.remove('hidden');
       document.getElementById('doneFillingBtn')!.classList.remove('hidden');
 
-      if (fields.length > 0) {
-        saveFormLog({
-          jobTitle:       response.jobTitle || jobData?.title || '',
-          company:        response.company  || jobData?.company || '',
-          boardType:      response.boardType || 'Unknown',
-          timestamp:      new Date().toISOString(),
-          url:            tabUrl,
-          jobDescription: hasDescription,
-          fields,
-          summary: {
-            totalFields:  totalCount,
-            filled:       filledCount,
-            failed:       totalCount - filledCount,
-            successRate:  pct,
-          },
-        });
-      }
+      saveFormLog({
+        jobTitle:       response?.jobTitle || jobData?.title || '',
+        company:        response?.company  || jobData?.company || '',
+        boardType:      response?.boardType || 'Unknown',
+        timestamp:      new Date().toISOString(),
+        url:            tabUrl,
+        jobDescription: hasDescription,
+        fields,
+        summary: {
+          totalFields:  totalCount,
+          filled:       filledCount,
+          failed:       totalCount - filledCount,
+          successRate:  pct,
+        },
+      });
     });
   });
 }
@@ -228,9 +245,11 @@ async function initPopup() {
     document.getElementById('matchPercentage')!.textContent = 'Analyzing…';
     document.getElementById('analysis')!.textContent = '';
 
-    const jobData = await getJobDataFromPage();
+    const { jobData, scriptNotLoaded } = await getJobDataFromPage();
     if (!jobData?.description) {
-      showError('No job description found on this page. Navigate to a job posting first.');
+      showError(scriptNotLoaded
+        ? 'Could not connect to the page. Please reload this tab and try again.'
+        : 'No job description found. Make sure you are on a job posting page.');
       return;
     }
 
@@ -253,6 +272,101 @@ async function initPopup() {
   document.getElementById('backToMenuBtn')?.addEventListener('click',   () => showView('menu'));
   document.getElementById('backFromErrorBtn')?.addEventListener('click', () => showView('menu'));
   document.getElementById('backFromFillBtn')?.addEventListener('click',  () => showView('menu'));
+  document.getElementById('backFromClBtn')?.addEventListener('click',    () => showView('menu'));
+
+  // ── Cover Letter: shared generation helper ────────────────────────────────
+  async function runCoverLetterGeneration(jobData: JobData | null, question: string, hasJD: boolean) {
+    const statusEl     = document.getElementById('clStatus')!;
+    const statusDetail = document.getElementById('clStatusDetail')!;
+    const resultEl     = document.getElementById('clResult')!;
+    const resultMsg    = document.getElementById('clResultMsg')!;
+    const resultDetail = document.getElementById('clResultDetail')!;
+    const errorEl      = document.getElementById('clError')!;
+    const errorMsg     = document.getElementById('clErrorMsg')!;
+
+    document.getElementById('clManualInput')!.classList.add('hidden');
+    statusEl.classList.remove('hidden');
+    resultEl.classList.add('hidden');
+    errorEl.classList.add('hidden');
+
+    statusDetail.textContent = hasJD
+      ? `Tailoring to ${jobData?.title || 'this role'} at ${jobData?.company || 'this company'}…`
+      : 'Generating from your resume…';
+
+    const resumeText  = formatResumeAsText(resume!);
+    const coverLetter = await requestCoverLetter(
+      resumeText,
+      jobData?.description || '',
+      jobData?.company     || '',
+      jobData?.title       || '',
+      question || undefined
+    );
+
+    statusEl.classList.add('hidden');
+
+    if (!coverLetter) {
+      errorEl.classList.remove('hidden');
+      errorMsg.textContent = 'Failed to generate. Check your API key in Settings.';
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(coverLetter);
+      resultEl.classList.remove('hidden');
+      resultMsg.textContent = '✅ Copied to clipboard!';
+      resultDetail.textContent = hasJD
+        ? `Tailored to: ${jobData?.title || 'this role'} at ${jobData?.company || 'this company'}`
+        : 'Based on your resume — paste a job description for better results';
+    } catch {
+      errorEl.classList.remove('hidden');
+      errorMsg.textContent = 'Generated but could not copy automatically. Try again.';
+    }
+  }
+
+  // ── Cover Letter button ────────────────────────────────────────────────
+  document.getElementById('coverLetterBtn')?.addEventListener('click', async () => {
+    if (!resume) { showError('No resume configured. Please edit your resume first.'); return; }
+
+    showView('coverLetter');
+    document.getElementById('clManualInput')!.classList.add('hidden');
+    document.getElementById('clStatus')!.classList.add('hidden');
+    document.getElementById('clResult')!.classList.add('hidden');
+    document.getElementById('clError')!.classList.add('hidden');
+    (document.getElementById('clJobDesc')  as HTMLTextAreaElement).value = '';
+    (document.getElementById('clQuestion') as HTMLTextAreaElement).value = '';
+    document.getElementById('clManualInfoMsg')!.textContent = '';
+
+    const { jobData, scriptNotLoaded } = await getJobDataFromPage();
+    const hasJD = !!(jobData?.description);
+
+    if (hasJD) {
+      await runCoverLetterGeneration(jobData, '', true);
+    } else {
+      const manualDetail = document.getElementById('clManualDetail')!;
+      manualDetail.textContent = scriptNotLoaded
+        ? 'Page not connected — paste the job description below for a tailored letter.'
+        : 'No job description detected on this page. Paste it below for a tailored letter.';
+      document.getElementById('clManualInput')!.classList.remove('hidden');
+    }
+  });
+
+  // ── Cover Letter: manual generate button ──────────────────────────────────
+  document.getElementById('clGenerateBtn')?.addEventListener('click', async () => {
+    const jobDesc  = (document.getElementById('clJobDesc')  as HTMLTextAreaElement).value.trim();
+    const question = (document.getElementById('clQuestion') as HTMLTextAreaElement).value.trim();
+    if (!jobDesc) {
+      document.getElementById('clManualInfoMsg')!.textContent = 'Please paste a job description above.';
+      return;
+    }
+    document.getElementById('clManualInfoMsg')!.textContent = '';
+    const jobData: JobData = { title: '', company: '', description: jobDesc, url: '' };
+    await runCoverLetterGeneration(jobData, question, true);
+  });
+
+  // ── Cover Letter: skip JD button ──────────────────────────────────────────
+  document.getElementById('clSkipDescBtn')?.addEventListener('click', async () => {
+    await runCoverLetterGeneration(null, '', false);
+  });
 
   // ── Form fill: job description flow ───────────────────────────────────────
   document.getElementById('hasJobDescBtn')?.addEventListener('click', () => {

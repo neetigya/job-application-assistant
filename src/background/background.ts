@@ -191,6 +191,62 @@ Reply with only the answer text.`;
   }
 }
 
+async function generateCoverLetter(
+  resumeContent: string,
+  jobDescription: string,
+  companyName: string,
+  jobTitle: string,
+  question?: string
+): Promise<string> {
+  const apiKey = await getApiKey();
+  if (!apiKey) return '';
+
+  const taskLine = question?.trim()
+    ? `Task: ${question.trim()}`
+    : 'Write a professional cover letter body for this job application.';
+
+  const prompt = `${taskLine}
+
+CANDIDATE BACKGROUND:
+${resumeContent}
+
+JOB:
+Title: ${jobTitle || '(not provided)'}
+Company: ${companyName || '(not provided)'}
+Description: ${jobDescription || '(not provided)'}
+
+Requirements:
+- 3-4 paragraphs, 300-400 words
+- Opening: genuine enthusiasm for this specific role/company (no "I am writing to apply")
+- Middle: 2-3 accomplishments from the resume that directly match the job requirements
+- Closing: professional call to action
+- No date, no address block, no "Dear Hiring Manager" salutation, no signature — body paragraphs only
+
+Reply with only the cover letter body text.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!response.ok) return '';
+    const data = await response.json();
+    return (data.content[0].text || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 // Listen for messages from popup and content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'analyzeMatch') {
@@ -211,6 +267,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       request.companyName || ''
     ).then((result) => sendResponse(result));
     return true; // Keep channel open for async response
+  }
+
+  if (request.action === 'generateCoverLetter') {
+    generateCoverLetter(
+      request.resumeContent || '',
+      request.jobDescription || '',
+      request.companyName || '',
+      request.jobTitle || '',
+      request.question || ''
+    ).then((coverLetter) => sendResponse({ coverLetter }));
+    return true;
   }
 });
 

@@ -73,6 +73,46 @@ export interface PersonalInfo {
   willingToRelocate: boolean;
   ableToCommute: boolean;
   currentlyEmployed: boolean;
+  workAuthorization?: boolean;   // legally authorized to work in target country
+  requiresSponsorship?: boolean; // needs visa sponsorship now or in the future
+}
+
+export interface ComplianceAnswers {
+  workAuthorization: {
+    isAuthorized: boolean;
+    requiresSponsorshipNow: boolean;
+    requiresSponsorshipFuture: boolean;
+  };
+  veteranStatus:
+    | 'not_a_veteran'
+    | 'protected_veteran'
+    | 'disabled_veteran'
+    | 'recently_separated_veteran'
+    | 'active_duty_wartime_veteran'
+    | 'armed_forces_medal_veteran'
+    | 'prefer_not_to_say';
+  disabilityStatus:
+    | 'yes_have_disability'
+    | 'no_disability'
+    | 'prefer_not_to_say';
+  genderIdentity:
+    | 'male'
+    | 'female'
+    | 'non_binary'
+    | 'prefer_not_to_say'
+    | 'self_describe';
+  genderSelfDescribe?: string;
+  raceEthnicity:
+    | 'american_indian_alaskan_native'
+    | 'asian'
+    | 'black_african_american'
+    | 'hispanic_latino'
+    | 'white'
+    | 'native_hawaiian_pacific_islander'
+    | 'two_or_more_races'
+    | 'prefer_not_to_say';
+  isHispanicLatino?: boolean;
+  lgbtqIdentity?: 'heterosexual' | 'gay_lesbian' | 'bisexual' | 'prefer_not_to_say' | null;
 }
 
 export interface OnlinePresence {
@@ -84,6 +124,9 @@ export interface OnlinePresence {
 export interface VoluntaryDisclosure {
   wantToDisclose: boolean;
   gender?: string;
+  hispanicLatino?: string;  // 'yes' | 'no' | 'prefer_not_to_say'
+  race?: string;            // EEOC race/ethnicity selection (stored as display text)
+  veteranStatus?: string;   // stored as display text, e.g. "Not a Protected Veteran"
   disabilityStatus?: 'yes' | 'no' | 'prefer_not_to_say';
 }
 
@@ -101,7 +144,8 @@ export interface ResumeData {
   skills: Skills;
   profileSummary?: string;
   onlinePresence?: OnlinePresence;
-  voluntaryDisclosure?: VoluntaryDisclosure;
+  voluntaryDisclosure?: VoluntaryDisclosure; // kept for backward compat; superseded by compliance
+  compliance?: ComplianceAnswers;
   commonQuestions?: CommonQuestions;
   lastUpdated?: string;
 }

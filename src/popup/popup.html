@@ -13,6 +13,7 @@
     <div id="buttonContainer">
       <button class="btn-primary"   id="fillFormBtn">📋 Fill Application Form</button>
       <button class="btn-secondary" id="analyzeBtn">📊 Analyze Job Matching</button>
+      <button class="btn-secondary" id="coverLetterBtn">📝 Copy Cover Letter</button>
       <button class="btn-secondary" id="editResumeBtn">✏️ Edit Resume</button>
     </div>
 
@@ -56,6 +57,42 @@
         <div id="analysis" style="font-size:13px;color:#555;margin-top:4px;"></div>
       </div>
       <button class="btn-secondary" id="backToMenuBtn">← Back</button>
+    </div>
+
+    <!-- ── Cover Letter View ────────────────────────────────────────────── -->
+    <div id="coverLetterContainer" class="hidden">
+
+      <!-- Ask / Generate section — shown when no JD detected on page -->
+      <div id="clManualInput" class="hidden">
+        <div class="card card-amber" style="margin-bottom:10px;">
+          <strong>Ask / Generate Cover Letter</strong>
+          <p id="clManualDetail" style="margin-top:4px;">No job description detected. Paste it below for a tailored letter.</p>
+        </div>
+        <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:500;">
+          Question or Prompt <span style="font-weight:400;color:#888;">(optional)</span>
+        </label>
+        <textarea id="clQuestion" style="height:56px;" placeholder="e.g. Write a cover letter focused on my backend experience…"></textarea>
+        <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:500;">Job Description</label>
+        <textarea id="clJobDesc" style="height:110px;" placeholder="Paste the job posting here…"></textarea>
+        <div id="clManualInfoMsg" style="min-height:16px;font-size:12px;color:#c62828;margin:2px 0 4px;"></div>
+        <div class="btn-stack">
+          <button class="btn-primary"   id="clGenerateBtn">Generate &amp; Copy</button>
+          <button class="btn-secondary" id="clSkipDescBtn">Generate without JD</button>
+        </div>
+      </div>
+
+      <div id="clStatus" class="card card-blue hidden" style="text-align:center;">
+        <strong>⏳ Generating cover letter…</strong>
+        <p id="clStatusDetail" style="margin-top:4px;font-size:13px;"></p>
+      </div>
+      <div id="clResult" class="card card-green hidden" style="margin-top:8px;">
+        <p id="clResultMsg" style="margin:0;font-weight:bold;"></p>
+        <p id="clResultDetail" style="margin:4px 0 0;font-size:12px;color:#2e7d32;"></p>
+      </div>
+      <div id="clError" class="card card-red hidden" style="margin-top:8px;">
+        <p id="clErrorMsg" style="margin:0;"></p>
+      </div>
+      <button class="btn-secondary" id="backFromClBtn" style="margin-top:8px;">← Back</button>
     </div>
 
     <!-- ── Error View ─────────────────────────────────────────────────────── -->

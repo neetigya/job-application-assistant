@@ -1,5 +1,5 @@
 // Options page script
-import { ResumeData, WorkHistory, Education } from '../types/resume';
+import { ResumeData, WorkHistory, Education, ComplianceAnswers } from '../types/resume';
 import { getTestResumeData } from '../utils/testDataStub';
 
 interface Question {
@@ -212,6 +212,19 @@ function validateForm(): boolean {
     if (!selected) valid = false;
   }
 
+  // Compliance required dropdowns
+  const compRequired = [
+    { id: 'comp_isAuthorized', errId: 'err-comp_isAuthorized' },
+    { id: 'comp_requiresSponsorshipNow', errId: 'err-comp_requiresSponsorshipNow' },
+  ];
+  for (const { id, errId } of compRequired) {
+    const sel = document.getElementById(id) as HTMLSelectElement | null;
+    const err = document.getElementById(errId);
+    const empty = !sel?.value;
+    setFieldError(err, empty);
+    if (empty) valid = false;
+  }
+
   // Work history: at least 1 job with title, company, startDate
   const jobContainer = document.getElementById('jobEntriesContainer')!;
   const jobEntries = jobContainer.querySelectorAll<HTMLElement>('.job-entry');
@@ -338,13 +351,6 @@ function buildResumeObject(): ResumeData {
     linkedinUrl: (document.getElementById('linkedinUrl') as HTMLInputElement)?.value.trim() || undefined,
   };
 
-  const wantToDisclose = (document.getElementById('wantToDisclose') as HTMLInputElement)?.checked || false;
-  const voluntaryDisclosure = {
-    wantToDisclose,
-    gender: wantToDisclose ? (document.getElementById('genderSelect') as HTMLSelectElement)?.value || undefined : undefined,
-    disabilityStatus: wantToDisclose ? ((document.getElementById('disabilityStatus') as HTMLSelectElement)?.value as 'yes' | 'no' | 'prefer_not_to_say') || 'prefer_not_to_say' : undefined,
-  };
-
   const commonQuestions = {
     expectedSalary: (document.getElementById('expectedSalary') as HTMLInputElement)?.value.trim() || undefined,
     yearsOfLeadership: (document.getElementById('yearsOfLeadership') as HTMLInputElement)?.value.trim() || undefined,
@@ -352,7 +358,31 @@ function buildResumeObject(): ResumeData {
     willingToTravel: (document.getElementById('willingToTravel') as HTMLInputElement)?.checked || false,
   };
 
-  return { personal, workHistory, education, skills, profileSummary, onlinePresence, voluntaryDisclosure, commonQuestions, lastUpdated: new Date().toISOString() };
+  const strToBool = (v: string): boolean | undefined =>
+    v === 'true' ? true : v === 'false' ? false : undefined;
+
+  const isAuthVal = strToBool(getVal('comp_isAuthorized'));
+  const reqNowVal = strToBool(getVal('comp_requiresSponsorshipNow'));
+  const reqFutVal = strToBool(getVal('comp_requiresSponsorshipFuture'));
+  const hispVal = getVal('comp_isHispanicLatino');
+  const lgbtqRaw = getVal('comp_lgbtqIdentity');
+
+  const compliance: ComplianceAnswers = {
+    workAuthorization: {
+      isAuthorized: isAuthVal ?? true,
+      requiresSponsorshipNow: reqNowVal ?? false,
+      requiresSponsorshipFuture: reqFutVal ?? false,
+    },
+    veteranStatus: (getVal('comp_veteranStatus') as ComplianceAnswers['veteranStatus']) || 'prefer_not_to_say',
+    disabilityStatus: (getVal('comp_disabilityStatus') as ComplianceAnswers['disabilityStatus']) || 'prefer_not_to_say',
+    genderIdentity: (getVal('comp_genderIdentity') as ComplianceAnswers['genderIdentity']) || 'prefer_not_to_say',
+    genderSelfDescribe: getVal('comp_genderSelfDescribe') || undefined,
+    raceEthnicity: (getVal('comp_raceEthnicity') as ComplianceAnswers['raceEthnicity']) || 'prefer_not_to_say',
+    isHispanicLatino: hispVal === 'true' ? true : hispVal === 'false' ? false : undefined,
+    lgbtqIdentity: (lgbtqRaw as ComplianceAnswers['lgbtqIdentity']) || null,
+  };
+
+  return { personal, workHistory, education, skills, profileSummary, onlinePresence, compliance, commonQuestions, lastUpdated: new Date().toISOString() };
 }
 
 // ─── Populate form from stored data ──────────────────────────────────────────
@@ -442,21 +472,71 @@ function populateForm(data: ResumeData) {
     setUrl('linkedinUrl', data.onlinePresence.linkedinUrl);
   }
 
-  // Voluntary Disclosure
-  if (data.voluntaryDisclosure) {
-    const chk = document.getElementById('wantToDisclose') as HTMLInputElement;
-    if (chk) {
-      chk.checked = data.voluntaryDisclosure.wantToDisclose;
-      const fields = document.getElementById('disclosureFields')!;
-      if (fields) fields.style.display = data.voluntaryDisclosure.wantToDisclose ? '' : 'none';
+  // Compliance — load from new compliance object, or auto-migrate from old fields
+  const setComp = (id: string, val: string | undefined) => {
+    if (val === undefined) return;
+    const el = document.getElementById(id) as HTMLSelectElement | HTMLInputElement | null;
+    if (el) el.value = val;
+  };
+
+  if (data.compliance) {
+    const c = data.compliance;
+    const boolStr = (v: boolean | undefined) => v === undefined ? '' : String(v);
+    setComp('comp_isAuthorized', boolStr(c.workAuthorization?.isAuthorized));
+    setComp('comp_requiresSponsorshipNow', boolStr(c.workAuthorization?.requiresSponsorshipNow));
+    setComp('comp_requiresSponsorshipFuture', boolStr(c.workAuthorization?.requiresSponsorshipFuture));
+    setComp('comp_veteranStatus', c.veteranStatus);
+    setComp('comp_disabilityStatus', c.disabilityStatus);
+    setComp('comp_genderIdentity', c.genderIdentity);
+    if (c.genderSelfDescribe) setComp('comp_genderSelfDescribe', c.genderSelfDescribe);
+    setComp('comp_isHispanicLatino',
+      c.isHispanicLatino === true ? 'true' : c.isHispanicLatino === false ? 'false' : '');
+    setComp('comp_raceEthnicity', c.raceEthnicity);
+    setComp('comp_lgbtqIdentity', c.lgbtqIdentity ?? '');
+    if (c.genderIdentity === 'self_describe') {
+      const label = document.getElementById('comp_genderSelfDescribeLabel');
+      if (label) label.style.display = '';
     }
-    if (data.voluntaryDisclosure.gender) {
-      const el = document.getElementById('genderSelect') as HTMLSelectElement;
-      if (el) el.value = data.voluntaryDisclosure.gender;
+  } else {
+    // Auto-migrate from old data format so existing saved resume is not lost
+    const p = data.personal;
+    const vd = data.voluntaryDisclosure;
+    if (p?.workAuthorization !== undefined) setComp('comp_isAuthorized', String(p.workAuthorization));
+    if (p?.requiresSponsorship !== undefined) {
+      setComp('comp_requiresSponsorshipNow', String(p.requiresSponsorship));
+      setComp('comp_requiresSponsorshipFuture', String(p.requiresSponsorship));
     }
-    if (data.voluntaryDisclosure.disabilityStatus) {
-      const el = document.getElementById('disabilityStatus') as HTMLSelectElement;
-      if (el) el.value = data.voluntaryDisclosure.disabilityStatus;
+    if (vd?.gender) {
+      const gMap: Record<string, string> = { male: 'male', female: 'female', 'non-binary': 'non_binary', prefer_not_to_say: 'prefer_not_to_say' };
+      setComp('comp_genderIdentity', gMap[vd.gender] ?? '');
+    }
+    if (vd?.hispanicLatino) {
+      setComp('comp_isHispanicLatino', vd.hispanicLatino === 'yes' ? 'true' : vd.hispanicLatino === 'no' ? 'false' : '');
+    }
+    if (vd?.race) {
+      const rMap: Record<string, string> = {
+        'White': 'white', 'White (Not Hispanic or Latino)': 'white',
+        'Black or African American': 'black_african_american',
+        'Hispanic or Latino': 'hispanic_latino',
+        'Asian': 'asian',
+        'American Indian or Alaska Native': 'american_indian_alaskan_native',
+        'Native Hawaiian or Pacific Islander': 'native_hawaiian_pacific_islander',
+        'Two or More Races': 'two_or_more_races',
+        prefer_not_to_say: 'prefer_not_to_say',
+      };
+      setComp('comp_raceEthnicity', rMap[vd.race] ?? '');
+    }
+    if (vd?.veteranStatus) {
+      const vtMap: Record<string, string> = {
+        'Not a Protected Veteran': 'not_a_veteran',
+        'Protected Veteran': 'protected_veteran',
+        prefer_not_to_say: 'prefer_not_to_say',
+      };
+      setComp('comp_veteranStatus', vtMap[vd.veteranStatus] ?? '');
+    }
+    if (vd?.disabilityStatus) {
+      const dMap: Record<string, string> = { yes: 'yes_have_disability', no: 'no_disability', prefer_not_to_say: 'prefer_not_to_say' };
+      setComp('comp_disabilityStatus', dMap[vd.disabilityStatus] ?? '');
     }
   }
 
@@ -511,6 +591,16 @@ document.getElementById('addEducationBtn')?.addEventListener('click', () => {
 });
 
 // ─── Preferred name toggle ────────────────────────────────────────────────────
+
+document.getElementById('comp_genderIdentity')?.addEventListener('change', (e) => {
+  const val = (e.target as HTMLSelectElement).value;
+  const label = document.getElementById('comp_genderSelfDescribeLabel');
+  if (label) label.style.display = val === 'self_describe' ? '' : 'none';
+  if (val !== 'self_describe') {
+    const inp = document.getElementById('comp_genderSelfDescribe') as HTMLInputElement | null;
+    if (inp) inp.value = '';
+  }
+});
 
 document.getElementById('hasPreferredName')?.addEventListener('change', (e) => {
   const checked = (e.target as HTMLInputElement).checked;
@@ -685,6 +775,18 @@ document.getElementById('clearFormBtn')?.addEventListener('click', () => {
   if (hasPreferredName) hasPreferredName.checked = false;
   const preferredNameGroup = document.getElementById('preferredNameGroup');
   if (preferredNameGroup) preferredNameGroup.style.display = 'none';
+
+  // Reset compliance selects manually (populateForm skips empty strings)
+  ['comp_isAuthorized','comp_requiresSponsorshipNow','comp_requiresSponsorshipFuture',
+   'comp_veteranStatus','comp_disabilityStatus','comp_genderIdentity',
+   'comp_isHispanicLatino','comp_raceEthnicity','comp_lgbtqIdentity'].forEach(id => {
+    const el = document.getElementById(id) as HTMLSelectElement | null;
+    if (el) el.value = '';
+  });
+  const selfDescInput = document.getElementById('comp_genderSelfDescribe') as HTMLInputElement | null;
+  if (selfDescInput) selfDescInput.value = '';
+  const selfDescLabel = document.getElementById('comp_genderSelfDescribeLabel');
+  if (selfDescLabel) selfDescLabel.style.display = 'none';
 
   showStatus('resumeStatus', 'Form cleared. Changes are not saved until you click "Save Resume".', 'success');
 });

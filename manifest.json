@@ -5,10 +5,7 @@
   "description": "Intelligent job application matching and form filling with Claude AI",
   "permissions": [
     "storage",
-    "activeTab",
-    "scripting",
-    "webRequest",
-    "webNavigation"
+    "activeTab"
   ],
   "host_permissions": [
     "https://www.linkedin.com/*",
