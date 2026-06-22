@@ -3,6 +3,7 @@ import { detectQuestionType, isLikelyOpenQuestion } from '../utils/questionAnswe
 import { JobData, FieldLogEntry } from '../types/resume';
 import { logger } from '../utils/logger';
 import { isDev, getDevConfig } from '../config/devMode';
+import { initSelectionToolbar } from './selectionToolbar';
 
 interface FillResult {
   fields: FieldLogEntry[];
@@ -830,16 +831,36 @@ function fillSelectElements(resumeData: any): FieldLogEntry[] {
   return logs;
 }
 
-// Trigger React/Vue synthetic events so frameworks pick up the value change
-function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
-  const proto = el instanceof HTMLTextAreaElement
-    ? window.HTMLTextAreaElement.prototype
-    : window.HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-  if (setter) setter.call(el, value);
-  else el.value = value;
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
+// The ONE function that writes text into any page field.
+// INPUT/TEXTAREA: uses the prototype value-setter so React/Vue synthetic events fire.
+//   opts.selectionStart + selectionEnd: splice-replace the selected region (toolbar format-in-place).
+//   No opts: replace the entire value (form-fill path).
+// contentEditable: restores opts.range then uses execCommand('insertText').
+interface ApplyValueOpts { range?: Range; selectionStart?: number; selectionEnd?: number }
+function applyValueToField(el: HTMLElement, value: string, opts?: ApplyValueOpts): void {
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    let finalValue = value;
+    if (opts?.selectionStart !== undefined && opts.selectionEnd !== undefined) {
+      finalValue =
+        el.value.slice(0, opts.selectionStart) + value + el.value.slice(opts.selectionEnd);
+    }
+    const proto = el instanceof HTMLTextAreaElement
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter) setter.call(el, finalValue);
+    else el.value = finalValue;
+    el.dispatchEvent(new Event('input',  { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  } else if (el.isContentEditable) {
+    const sel = window.getSelection();
+    if (!sel) return;
+    if (opts?.range) {
+      sel.removeAllRanges();
+      sel.addRange(opts.range);
+    }
+    document.execCommand('insertText', false, value);
+  }
 }
 
 // Get a combined "hint" string from all identifiers on a field
@@ -949,7 +970,7 @@ function fillApplicationForm(resumeData: any): FillResult {
   inputs.forEach((input) => {
     if ((input as HTMLInputElement).readOnly || input.disabled) return;
     // Skip React Select / custom-select typing inputs — these are handled by fillOpenEndedWithAI
-    // via the known-field path. Filling them here with setNativeValue produces wrong text.
+    // via the known-field path. Filling them here with applyValueToField produces wrong text.
     if (input instanceof HTMLInputElement && isCustomSelectInput(input)) return;
     const hint = getFieldHint(input);
 
@@ -990,7 +1011,7 @@ function fillApplicationForm(resumeData: any): FillResult {
           logger.debug(`✗ No value — matched "${label}" — hint: "${hint.slice(0, 80)}"`);
           break;
         }
-        setNativeValue(input, value);
+        applyValueToField(input, value);
         filledCount++;
         matched = true;
         fieldLog.filled = true;
@@ -1278,7 +1299,7 @@ async function fillOpenEndedWithAI(
         continue;
       }
     } else {
-      setNativeValue(el, aiResponse.answer);
+      applyValueToField(el, aiResponse.answer);
       filled = true;
     }
     // (note: known-field pre-check is handled above before the AI call)
@@ -1389,7 +1410,7 @@ async function fillCoverLetterField(
   );
   if (!coverLetter) return;
 
-  setNativeValue(ta, coverLetter);
+  applyValueToField(ta, coverLetter);
 
   result.fields.push({
     fieldName: 'cover_letter',
@@ -1442,3 +1463,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 //logger.info('Content script loaded on', window.location.href);
+
+// Initialise the selection toolbar. Must come after all functions are defined
+// so applyValueToField is in scope when passed as the writer callback.
+initSelectionToolbar(applyValueToField);

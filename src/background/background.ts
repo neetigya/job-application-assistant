@@ -247,6 +247,55 @@ Reply with only the cover letter body text.`;
   }
 }
 
+// ── Format-in-place ───────────────────────────────────────────────────────────
+
+const HUMAN_RULES = '\n\nStyle rules: no em-dashes, no "delve/leverage/utilize/in the realm of", active voice, short sentences, no corporate filler.';
+
+const FORMAT_PROMPTS: Record<string, string> = {
+  bullets:     'Convert the following text into concise bullet points. Start each bullet with "• ". Preserve all key information.' + HUMAN_RULES + '\n\nReturn only the bullet points.\n\nText:\n',
+  clean:       'Fix grammar, spelling, and punctuation in the following text. Keep the original meaning and approximate length.' + HUMAN_RULES + '\n\nReturn only the corrected text.\n\nText:\n',
+  rephrase:    'Rephrase the following text to improve clarity and flow while keeping the same meaning.' + HUMAN_RULES + '\n\nReturn only the rephrased text.\n\nText:\n',
+  rephbullets: 'Rephrase the following text and format it as bullet points. Start each bullet with "• ". Preserve all key information.' + HUMAN_RULES + '\n\nReturn only the bullet points.\n\nText:\n',
+  condense:    'Condense the following text to roughly half its length while keeping all key information.' + HUMAN_RULES + '\n\nReturn only the condensed text.\n\nText:\n',
+  humanize:    'Rewrite the following text to sound natural, warm, and human. Remove corporate jargon and AI-sounding phrases.' + HUMAN_RULES + '\n\nReturn only the rewritten text.\n\nText:\n',
+};
+
+async function formatText(
+  text: string,
+  formatType: string
+): Promise<{ ok: boolean; text?: string; error?: string }> {
+  const apiKey = await getApiKey();
+  if (!apiKey) return { ok: false, error: 'no_key' };
+
+  const promptBase = FORMAT_PROMPTS[formatType];
+  if (!promptBase) return { ok: false, error: 'unknown_format' };
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: promptBase + text }],
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      return { ok: false, error: `api_${response.status}: ${(err as any)?.error?.message || ''}` };
+    }
+    const data = await response.json();
+    return { ok: true, text: (data.content[0].text || '').trim() };
+  } catch (e) {
+    return { ok: false, error: 'network' };
+  }
+}
+
 // Listen for messages from popup and content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'analyzeMatch') {
@@ -277,6 +326,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       request.jobTitle || '',
       request.question || ''
     ).then((coverLetter) => sendResponse({ coverLetter }));
+    return true;
+  }
+
+  if (request.action === 'formatText') {
+    formatText(request.text || '', request.formatType || '').then(sendResponse);
     return true;
   }
 });
