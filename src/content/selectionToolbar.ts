@@ -1,5 +1,5 @@
 // Selection Toolbar — injected into every page via the existing content script.
-// Shows a floating Copy button (always) + Format ▾ dropdown (editable selections only).
+// Shows Copy + Explain ▾ (always), Format ▾ (editable only), capture buttons (read-only only).
 // All styles are inline to survive hostile host-page CSS.
 
 declare global {
@@ -12,12 +12,15 @@ export type FieldWriter = (el: HTMLElement, val: string, opts?: FieldWriterOpts)
 
 // ── Inline style constants ────────────────────────────────────────────────────
 const S = {
-  surface:  '#1c1c1e',
-  text:     '#f2f2f7',
-  muted:    '#8e8e93',
-  hairline: 'rgba(255,255,255,0.08)',
-  accent:   '#1a73e8',
-  font:     '-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif',
+  surface:   '#202124',
+  border:    'rgba(255,255,255,0.10)',
+  shadow:    '0 4px 16px rgba(0,0,0,0.28)',
+  neutral:   '#e8eaed',   // Copy — plain action
+  workspace: '#8ab4f8',   // Explain / +JD / Add as Question — opens sidebar
+  format:    '#c8a2ff',   // Format — write action, visually distinct
+  hairline:  'rgba(255,255,255,0.12)',
+  hover:     'rgba(255,255,255,0.08)',
+  font:      '-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif',
 } as const;
 
 // ── Format prompts ────────────────────────────────────────────────────────────
@@ -48,12 +51,23 @@ const FORMAT_PROMPTS: Record<string, string> = {
     '\n\nReturn only the rewritten text.\n\nText:\n',
 };
 
+// ── Explain length options ────────────────────────────────────────────────────
+const EXPLAIN_LENGTHS: [string, string][] = [
+  ['default',  'Default (2–3 sentences)'],
+  ['oneliner', 'One-liner'],
+  ['medium',   'Medium paragraph'],
+  ['detailed', 'Detailed'],
+];
+
 // ── Module state ──────────────────────────────────────────────────────────────
 let toolbarEl:  HTMLElement | null = null;
 let dropdownEl: HTMLElement | null = null;
 let pillEl:     HTMLElement | null = null;
 let pillTimer:  ReturnType<typeof setTimeout> | null = null;
 let writeField: FieldWriter | null = null;
+
+// Cached active job label for capture button (loaded at init, kept fresh via storage listener)
+let activeJobLabel = '';
 
 interface SavedSel {
   editableEl: HTMLElement | null;
@@ -138,7 +152,7 @@ function showPill(anchor: HTMLElement, msg: string, isError = false): void {
     `top:${rect.bottom + 6}px`,
     `background:${isError ? '#3a1b1b' : S.surface}`,
     `border:1px solid ${isError ? '#f44336' : S.hairline}`,
-    `color:${S.text}`,
+    `color:${S.neutral}`,
     `font-family:${S.font}`,
     'font-size:12px',
     'padding:4px 10px',
@@ -160,15 +174,21 @@ function hidePill(): void {
 }
 
 // ── Toolbar helpers ───────────────────────────────────────────────────────────
-function makeBtn(label: string, isAccent = false): HTMLButtonElement {
+type BtnColor = 'neutral' | 'workspace' | 'format';
+function makeBtn(label: string, color: BtnColor = 'neutral'): HTMLButtonElement {
+  const colorMap: Record<BtnColor, string> = {
+    neutral:   S.neutral,
+    workspace: S.workspace,
+    format:    S.format,
+  };
   const btn = document.createElement('button');
   btn.textContent = label;
   btn.style.cssText = [
     'all:unset',
-    `color:${isAccent ? S.accent : S.text}`,
+    `color:${colorMap[color]}`,
     `font-family:${S.font}`,
     'font-size:13px',
-    `font-weight:${isAccent ? '500' : '400'}`,
+    `font-weight:${color === 'neutral' ? '400' : '500'}`,
     'padding:4px 10px',
     'cursor:pointer',
     'border-radius:6px',
@@ -176,7 +196,7 @@ function makeBtn(label: string, isAccent = false): HTMLButtonElement {
     'white-space:nowrap',
     'display:inline-block',
   ].join(';');
-  btn.addEventListener('mouseenter', () => { btn.style.background = S.hairline; });
+  btn.addEventListener('mouseenter', () => { btn.style.background = S.hover; });
   btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
   return btn;
 }
@@ -195,6 +215,46 @@ function positionToolbar(tb: HTMLElement, anchorRect: DOMRect): void {
   if (y < 8) y = anchorRect.bottom + 8;
   tb.style.left = `${x}px`;
   tb.style.top  = `${y}px`;
+}
+
+function showExplainDropdown(explainBtn: HTMLElement): void {
+  if (dropdownEl) { dropdownEl.remove(); dropdownEl = null; return; }
+
+  const rect = explainBtn.getBoundingClientRect();
+  const dd = document.createElement('div');
+  dd.id = '__jae-dropdown';
+  dd.style.cssText = [
+    'position:fixed',
+    `left:${rect.left}px`,
+    `top:${rect.bottom + 4}px`,
+    `background:${S.surface}`,
+    `border:1px solid ${S.hairline}`,
+    'border-radius:8px',
+    'padding:4px 0',
+    'z-index:2147483646',
+    'box-shadow:0 8px 24px rgba(0,0,0,.6)',
+    'min-width:190px',
+    `font-family:${S.font}`,
+  ].join(';');
+
+  for (const [length, label] of EXPLAIN_LENGTHS) {
+    const item = document.createElement('div');
+    item.textContent = label;
+    item.style.cssText = [
+      `color:${S.neutral}`, 'font-size:13px', 'padding:7px 14px', 'cursor:pointer', 'white-space:nowrap',
+    ].join(';');
+    item.addEventListener('mouseenter', () => { item.style.background = S.hairline; });
+    item.addEventListener('mouseleave', () => { item.style.background = ''; });
+    item.addEventListener('mousedown',  e => e.preventDefault());
+    item.addEventListener('click', () => {
+      dd.remove(); dropdownEl = null;
+      void applyExplainCmd(length);
+    });
+    dd.appendChild(item);
+  }
+
+  document.documentElement.appendChild(dd);
+  dropdownEl = dd;
 }
 
 function showDropdown(fmtBtn: HTMLElement, editableEl: HTMLElement): void {
@@ -231,7 +291,7 @@ function showDropdown(fmtBtn: HTMLElement, editableEl: HTMLElement): void {
     item.textContent = label;
     item.setAttribute('data-fmt', fmt);
     item.style.cssText = [
-      `color:${S.text}`,
+      `color:${S.neutral}`,
       'font-size:13px',
       'padding:7px 14px',
       'cursor:pointer',
@@ -267,20 +327,20 @@ function showToolbar(editableEl: HTMLElement | null, anchorRect: DOMRect): void 
     'position:fixed',
     'left:0', 'top:0',
     `background:${S.surface}`,
-    `border:1px solid ${S.hairline}`,
+    `border:1px solid ${S.border}`,
     'border-radius:10px',
     'padding:3px 4px',
     'display:flex',
     'align-items:center',
     'gap:2px',
     'z-index:2147483646',
-    'box-shadow:0 4px 16px rgba(0,0,0,.55)',
+    `box-shadow:${S.shadow}`,
     'user-select:none',
     '-webkit-user-select:none',
   ].join(';');
 
   // ── Copy button (always shown)
-  const copyBtn = makeBtn('Copy');
+  const copyBtn = makeBtn('Copy', 'neutral');
   copyBtn.addEventListener('mousedown', e => e.preventDefault());
   copyBtn.addEventListener('click', () => {
     const text = savedSel?.text || '';
@@ -294,13 +354,27 @@ function showToolbar(editableEl: HTMLElement | null, anchorRect: DOMRect): void 
   });
   tb.appendChild(copyBtn);
 
-  // ── Format ▾ (only for editable selections)
-  if (editableEl) {
-    const divider = document.createElement('div');
-    divider.style.cssText = `width:1px;height:16px;background:${S.hairline};flex-shrink:0;`;
-    tb.appendChild(divider);
+  const addDivider = () => {
+    const d = document.createElement('div');
+    d.style.cssText = `width:1px;height:18px;background:${S.hairline};flex-shrink:0;`;
+    tb.appendChild(d);
+  };
 
-    const fmtBtn = makeBtn('Format ▾', true);
+  // ── Explain ▾ (always shown, both editable and read-only)
+  addDivider();
+  const explainBtn = makeBtn('Explain ▾', 'workspace');
+  explainBtn.id = '__jae-explain-btn';
+  explainBtn.addEventListener('mousedown', e => e.preventDefault());
+  explainBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    showExplainDropdown(explainBtn);
+  });
+  tb.appendChild(explainBtn);
+
+  if (editableEl) {
+    // ── Format ▾ (editable selections only)
+    addDivider();
+    const fmtBtn = makeBtn('Format ▾', 'format');
     fmtBtn.id = '__jae-format-btn';
     fmtBtn.addEventListener('mousedown', e => e.preventDefault());
     fmtBtn.addEventListener('click', e => {
@@ -308,6 +382,47 @@ function showToolbar(editableEl: HTMLElement | null, anchorRect: DOMRect): void 
       showDropdown(fmtBtn, editableEl);
     });
     tb.appendChild(fmtBtn);
+  } else {
+    // ── Capture buttons (read-only selections only)
+    addDivider();
+
+    const jdLabel = activeJobLabel
+      ? `+ JD (${activeJobLabel.slice(0, 22)}…)`
+      : 'Add to Job Description';
+    const jdBtn = makeBtn(jdLabel, 'workspace');
+    jdBtn.id = '__jae-jd-btn';
+    jdBtn.addEventListener('mousedown', e => e.preventDefault());
+    jdBtn.addEventListener('click', () => {
+      const text = savedSel?.text || '';
+      if (!text) return;
+      hideToolbar();
+      showPill(document.documentElement, '✏ Adding to JD…');
+      chrome.runtime.sendMessage(
+        { action: 'jae_capture_jd', text, url: window.location.href },
+        (res) => {
+          hidePill();
+          if (res?.ok) {
+            showPill(document.documentElement, '✓ Added to Job Description');
+          } else {
+            showPill(document.documentElement, '✕ Could not add', true);
+          }
+          pillTimer = setTimeout(hidePill, 2200);
+        }
+      );
+    });
+    tb.appendChild(jdBtn);
+
+    addDivider();
+    const qBtn = makeBtn('Add as Question', 'workspace');
+    qBtn.id = '__jae-q-btn';
+    qBtn.addEventListener('mousedown', e => e.preventDefault());
+    qBtn.addEventListener('click', () => {
+      const text = savedSel?.text || '';
+      if (!text) return;
+      hideToolbar();
+      chrome.runtime.sendMessage({ action: 'jae_capture_question', text });
+    });
+    tb.appendChild(qBtn);
   }
 
   // Append to documentElement (not body) — works in iframes with overflow:hidden on body
@@ -364,6 +479,34 @@ async function applyFormatCmd(formatType: string, editableEl: HTMLElement): Prom
 
   showPill(editableEl, '✓ Done');
   pillTimer = setTimeout(hidePill, 2000);
+}
+
+// ── Explain execution ─────────────────────────────────────────────────────────
+async function applyExplainCmd(length: string): Promise<void> {
+  if (!savedSel?.text.trim()) return;
+  let text = savedSel.text;
+  if (text.length > 6000) text = text.slice(0, 6000);
+
+  hideToolbar();
+  showPill(document.documentElement, '✏ Explaining…');
+
+  const response = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    chrome.runtime.sendMessage({ action: 'jae_explain', text, length }, (res) => {
+      if (chrome.runtime.lastError) resolve({ ok: false, error: 'extension_error' });
+      else resolve(res || { ok: false, error: 'no_response' });
+    });
+  });
+
+  hidePill();
+
+  if (!response?.ok) {
+    showPill(document.documentElement,
+      response?.error === 'no_key' ? '✕ No API key — open Settings' : `✕ ${response?.error || 'Error'}`,
+      true
+    );
+    pillTimer = setTimeout(hidePill, 4000);
+  }
+  // Result is delivered to the sidebar by the background→top-frame relay
 }
 
 // ── checkSelection — the unified selection reader ─────────────────────────────
@@ -479,11 +622,29 @@ function onContextMenu(): void {
   cacheSelection(getEditableTarget());
 }
 
+// ── Active-job label helpers ──────────────────────────────────────────────────
+function refreshJobLabel(job: any): void {
+  if (!job?.jobDescription) { activeJobLabel = ''; return; }
+  if (job.jobTitle && job.company)  { activeJobLabel = `${job.jobTitle} — ${job.company}`; return; }
+  if (job.jobTitle)                 { activeJobLabel = job.jobTitle; return; }
+  if (job.company)                  { activeJobLabel = job.company; return; }
+  if (job.sourceUrl) {
+    try { activeJobLabel = new URL(job.sourceUrl).hostname; return; } catch {}
+  }
+  activeJobLabel = 'current job';
+}
+
 // ── Init (called once from content.ts) ───────────────────────────────────────
 export function initSelectionToolbar(writer: FieldWriter): void {
   if (window.__jaeToolbarLoaded) return;
   window.__jaeToolbarLoaded = true;
   writeField = writer;
+
+  // Load active job label for capture button
+  chrome.storage.local.get(['jae_active_job'], (result) => refreshJobLabel(result.jae_active_job));
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.jae_active_job) refreshJobLabel(changes.jae_active_job.newValue);
+  });
 
   document.addEventListener('mouseup',     onMouseUp);
   document.addEventListener('keyup',       onKeyUp);

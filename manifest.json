@@ -40,5 +40,11 @@
       "js": ["content/content.js"],
       "all_frames": true
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["sidebar/sidebar.html", "sidebar/sidebar.css", "sidebar/sidebar.js"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }

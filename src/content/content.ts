@@ -4,6 +4,7 @@ import { JobData, FieldLogEntry } from '../types/resume';
 import { logger } from '../utils/logger';
 import { isDev, getDevConfig } from '../config/devMode';
 import { initSelectionToolbar } from './selectionToolbar';
+import { initSidebarHost } from './sidebarHost';
 
 interface FillResult {
   fields: FieldLogEntry[];
@@ -1464,6 +1465,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 //logger.info('Content script loaded on', window.location.href);
 
-// Initialise the selection toolbar. Must come after all functions are defined
-// so applyValueToField is in scope when passed as the writer callback.
+// Initialise the selection toolbar and sidebar host.
+// Both must come after all functions are defined.
 initSelectionToolbar(applyValueToField);
+initSidebarHost(extractJobData);

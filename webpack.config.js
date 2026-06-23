@@ -24,9 +24,11 @@ module.exports = (env = {}) => {
     new CopyPlugin({
       patterns: [
         { from: 'manifest.json', to: 'manifest.json' },
-        { from: 'src/popup/popup.html', to: 'popup/popup.html' },
-        { from: 'src/popup/popup.css',  to: 'popup/popup.css'  },
+        { from: 'src/popup/popup.html',    to: 'popup/popup.html' },
+        { from: 'src/popup/popup.css',     to: 'popup/popup.css'  },
         { from: 'src/options/options.html', to: 'options/options.html' },
+        { from: 'src/sidebar/sidebar.html', to: 'sidebar/sidebar.html' },
+        { from: 'src/sidebar/sidebar.css',  to: 'sidebar/sidebar.css'  },
         { from: 'images', to: 'images' }
       ]
     })
@@ -45,10 +47,11 @@ module.exports = (env = {}) => {
     {
       mode: isProd ? 'production' : 'development',
       entry: {
-        popup: './src/popup/popup.ts',
-        content: './src/content/content.ts',
+        popup:      './src/popup/popup.ts',
+        content:    './src/content/content.ts',
         background: './src/background/background.ts',
-        options: './src/options/options.ts'
+        options:    './src/options/options.ts',
+        sidebar:    './src/sidebar/sidebar.ts',
       },
       output: {
         path: path.resolve(__dirname, 'dist'),

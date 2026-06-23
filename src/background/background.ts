@@ -4,6 +4,14 @@ import { logger } from '../utils/logger';
 
 const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 
+const HUMANIZE_RULE =
+  'Never use em dashes (—) or en dashes (–); use commas, periods, or parentheses instead. ' +
+  'Write naturally — avoid corporate buzzwords, AI-sounding filler phrases, and overly formal language. ' +
+  'Sound like a real person wrote it.';
+
+const NO_HEADER_RULE =
+  'Output only the text itself. Do not add a title, heading, markdown header (no lines starting with #), or any preamble.';
+
 async function getApiKey(): Promise<string> {
   return new Promise((resolve) => {
     chrome.storage.local.get(['apiKey'], (result: { [key: string]: any }) => {
@@ -147,6 +155,8 @@ Requirements:
 - Highlight 1-2 relevant skills from the candidate's background
 - Sound authentic, not generic
 - 2-3 sentences maximum
+- ${HUMANIZE_RULE}
+- ${NO_HEADER_RULE}
 
 Reply with only the answer text.`
     : `Generate a concise, professional answer (1-3 sentences) to this job application question:
@@ -157,6 +167,9 @@ ${resumeContent}
 
 JOB DESCRIPTION:
 ${jobDescription || '(not provided)'}
+
+${HUMANIZE_RULE}
+${NO_HEADER_RULE}
 
 Reply with only the answer text.`;
 
@@ -221,6 +234,8 @@ Requirements:
 - Middle: 2-3 accomplishments from the resume that directly match the job requirements
 - Closing: professional call to action
 - No date, no address block, no "Dear Hiring Manager" salutation, no signature — body paragraphs only
+- ${HUMANIZE_RULE}
+- ${NO_HEADER_RULE}
 
 Reply with only the cover letter body text.`;
 
@@ -244,6 +259,48 @@ Reply with only the cover letter body text.`;
     return (data.content[0].text || '').trim();
   } catch {
     return '';
+  }
+}
+
+// ── Explain text ─────────────────────────────────────────────────────────────
+
+const LENGTH_CFG: Record<string, { instruction: string; maxTokens: number }> = {
+  default:  { instruction: `Explain the following text clearly and concisely in 2–3 sentences. ${NO_HEADER_RULE}`, maxTokens: 300 },
+  oneliner: { instruction: `Explain the following text in exactly one sentence. ${NO_HEADER_RULE}`, maxTokens: 120 },
+  medium:   { instruction: `Explain the following text in a clear paragraph (4–6 sentences). ${NO_HEADER_RULE}`, maxTokens: 600 },
+  detailed: { instruction: `Provide a detailed explanation of the following text, covering key concepts, context, and implications. ${NO_HEADER_RULE}`, maxTokens: 1200 },
+};
+
+async function explainText(
+  text: string,
+  length: string
+): Promise<{ ok: boolean; text?: string; error?: string }> {
+  const apiKey = await getApiKey();
+  if (!apiKey) return { ok: false, error: 'no_key' };
+  const cfg = LENGTH_CFG[length] ?? LENGTH_CFG.default;
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: cfg.maxTokens,
+        messages: [{ role: 'user', content: `${cfg.instruction}\n\nText:\n${text}` }],
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      return { ok: false, error: `api_${response.status}: ${(err as any)?.error?.message || ''}` };
+    }
+    const data = await response.json();
+    return { ok: true, text: (data.content[0].text || '').trim() };
+  } catch {
+    return { ok: false, error: 'network' };
   }
 }
 
@@ -331,6 +388,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'formatText') {
     formatText(request.text || '', request.formatType || '').then(sendResponse);
+    return true;
+  }
+
+  // Explain: do API call in background, then relay result to top frame
+  if (request.action === 'jae_explain') {
+    const tabId = sender.tab?.id;
+    if (!tabId) { sendResponse({ ok: false, error: 'no_tab' }); return; }
+    explainText(request.text || '', request.length || 'default').then((result) => {
+      chrome.tabs.sendMessage(tabId, { action: 'jae_sidebar_show_explain', result }, { frameId: 0 },
+        () => chrome.runtime.lastError); // suppress error if top frame not ready
+      sendResponse({ ok: result.ok, error: result.error });
+    });
+    return true;
+  }
+
+  // Relay capture / open-sidebar messages from any frame → top frame
+  if (
+    request.action === 'jae_capture_jd' ||
+    request.action === 'jae_capture_question' ||
+    request.action === 'jae_open_sidebar'
+  ) {
+    const tabId = sender.tab?.id;
+    if (!tabId) { sendResponse({ ok: true }); return; }
+    chrome.tabs.sendMessage(tabId, request, { frameId: 0 }, (res) => {
+      chrome.runtime.lastError; // consume error
+      sendResponse(res || { ok: true });
+    });
     return true;
   }
 });

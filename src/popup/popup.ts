@@ -230,6 +230,16 @@ async function initPopup() {
     chrome.runtime.openOptionsPage();
   });
 
+  // ── Open Workspace button ──────────────────────────────────────────────────
+  document.getElementById('openWorkspaceBtn')?.addEventListener('click', async () => {
+    const tabId = await getActiveTabId();
+    if (!tabId) return;
+    chrome.tabs.sendMessage(tabId, { action: 'jae_open_sidebar' }, { frameId: 0 }, () => {
+      chrome.runtime.lastError; // suppress error if content script not loaded
+    });
+    window.close();
+  });
+
   // ── Fill Form button — skip job-description dialog, fill immediately ────────
   document.getElementById('fillFormBtn')?.addEventListener('click', () => {
     if (!resume) { showError('No resume configured. Please edit your resume first.'); return; }
