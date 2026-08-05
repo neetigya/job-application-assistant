@@ -4,10 +4,13 @@ import { logger } from '../utils/logger';
 
 const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 
-const HUMANIZE_RULE =
-  'Never use em dashes (—) or en dashes (–); use commas, periods, or parentheses instead. ' +
-  'Write naturally — avoid corporate buzzwords, AI-sounding filler phrases, and overly formal language. ' +
-  'Sound like a real person wrote it.';
+const HUMAN_RULES = `
+
+Writing rules (follow strictly):
+- Never use em dashes (—) or en dashes (–). Use commas, periods, or parentheses instead.
+- Write naturally and directly, the way a real person speaks. Avoid corporate buzzwords, AI-sounding filler phrases ("I am excited to leverage my passion for..."), and overly formal language.
+- Be specific and confident, not generic. Reference concrete details from the candidate's background.
+- Do not add a preamble, title, or markdown heading. Output only the requested text.`;
 
 const NO_HEADER_RULE =
   'Output only the text itself. Do not add a title, heading, markdown header (no lines starting with #), or any preamble.';
@@ -155,10 +158,8 @@ Requirements:
 - Highlight 1-2 relevant skills from the candidate's background
 - Sound authentic, not generic
 - 2-3 sentences maximum
-- ${HUMANIZE_RULE}
-- ${NO_HEADER_RULE}
 
-Reply with only the answer text.`
+Reply with only the answer text.` + HUMAN_RULES
     : `Generate a concise, professional answer (1-3 sentences) to this job application question:
 "${fieldLabel}"
 
@@ -168,10 +169,7 @@ ${resumeContent}
 JOB DESCRIPTION:
 ${jobDescription || '(not provided)'}
 
-${HUMANIZE_RULE}
-${NO_HEADER_RULE}
-
-Reply with only the answer text.`;
+Reply with only the answer text.` + HUMAN_RULES;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -184,7 +182,7 @@ Reply with only the answer text.`;
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: 250,
+        max_tokens: isWhyInterested ? 250 : 600,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -196,7 +194,7 @@ Reply with only the answer text.`;
     }
 
     const data = await response.json();
-    const answer = data.content[0].text.trim();
+    const answer = cleanGeneratedText(data.content[0].text.trim());
     return { answer, questionType, confidence: 80 };
   } catch (error) {
     logger.error('generateAnswer error:', error);
@@ -234,10 +232,8 @@ Requirements:
 - Middle: 2-3 accomplishments from the resume that directly match the job requirements
 - Closing: professional call to action
 - No date, no address block, no "Dear Hiring Manager" salutation, no signature — body paragraphs only
-- ${HUMANIZE_RULE}
-- ${NO_HEADER_RULE}
 
-Reply with only the cover letter body text.`;
+Reply with only the cover letter body text.` + HUMAN_RULES;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -256,10 +252,23 @@ Reply with only the cover letter body text.`;
     });
     if (!response.ok) return '';
     const data = await response.json();
-    return (data.content[0].text || '').trim();
+    return cleanGeneratedText((data.content[0].text || '').trim());
   } catch {
     return '';
   }
+}
+
+// ── Shared post-processing ────────────────────────────────────────────────────
+
+function cleanGeneratedText(raw: string): string {
+  return raw
+    // Strip leading markdown headers
+    .replace(/^#{1,6}\s+.+\n?/gm, '')
+    // Em/en dash before a capital letter → start new sentence
+    .replace(/\s*[—–]\s*([A-Z])/g, '. $1')
+    // Remaining em/en dashes → comma
+    .replace(/\s*[—–]\s*/g, ', ')
+    .trim();
 }
 
 // ── Explain text ─────────────────────────────────────────────────────────────
@@ -298,15 +307,13 @@ async function explainText(
       return { ok: false, error: `api_${response.status}: ${(err as any)?.error?.message || ''}` };
     }
     const data = await response.json();
-    return { ok: true, text: (data.content[0].text || '').trim() };
+    return { ok: true, text: cleanGeneratedText((data.content[0].text || '').trim()) };
   } catch {
     return { ok: false, error: 'network' };
   }
 }
 
 // ── Format-in-place ───────────────────────────────────────────────────────────
-
-const HUMAN_RULES = '\n\nStyle rules: no em-dashes, no "delve/leverage/utilize/in the realm of", active voice, short sentences, no corporate filler.';
 
 const FORMAT_PROMPTS: Record<string, string> = {
   bullets:     'Convert the following text into concise bullet points. Start each bullet with "• ". Preserve all key information.' + HUMAN_RULES + '\n\nReturn only the bullet points.\n\nText:\n',

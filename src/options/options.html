@@ -215,7 +215,7 @@
     }
     .field-error { color: #ff6b6b; font-size: 12px; margin-top: 4px; display: none; }
     .field-error.visible { display: block; }
-    .job-entry, .education-entry {
+    .job-entry, .education-entry, .project-entry {
       background: #1e1e1e;
       border: 1px solid #333;
       border-radius: 8px;
@@ -279,6 +279,7 @@
   <nav class="sidebar">
     <div class="sidebar-title">Settings</div>
     <a class="nav-item active" href="#resume">Resume</a>
+    <a class="nav-item" href="#projects">Projects</a>
     <a class="nav-item" href="#api-key">API Key</a>
     <a class="nav-item" href="#preferences">Preferences</a>
     <a class="nav-item" href="#questions">Common Questions</a>
@@ -396,6 +397,13 @@
       <div class="card-title" style="font-size:14px; margin-bottom:14px;">Education</div>
       <div id="educationEntriesContainer"></div>
       <button class="btn-add" id="addEducationBtn">+ Add Another Education</button>
+
+      <hr class="section-divider">
+
+      <!-- Projects -->
+      <div class="card-title" style="font-size:14px; margin-bottom:14px;" id="projects">Projects</div>
+      <div id="projectEntriesContainer"></div>
+      <button class="btn-add" id="addProjectBtn">+ Add Another Project</button>
 
       <hr class="section-divider">
 

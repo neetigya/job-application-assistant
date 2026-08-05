@@ -344,13 +344,30 @@ function showToolbar(editableEl: HTMLElement | null, anchorRect: DOMRect): void 
   copyBtn.addEventListener('mousedown', e => e.preventDefault());
   copyBtn.addEventListener('click', () => {
     const text = savedSel?.text || '';
-    navigator.clipboard.writeText(text).then(() => {
-      copyBtn.textContent = '✓ Copied';
+    if (!text) return;
+    const finish = (ok: boolean) => {
+      copyBtn.textContent = ok ? '✓ Copied' : '✕ Failed';
       setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1400);
-    }).catch(() => {
-      copyBtn.textContent = '✕ Failed';
-      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1400);
-    });
+    };
+    // navigator.clipboard is blocked inside cross-origin iframes by Permissions Policy.
+    // Fall back to execCommand which is not subject to that restriction.
+    const execFallback = (): boolean => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;';
+        document.documentElement.appendChild(ta);
+        ta.focus(); ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return ok;
+      } catch { return false; }
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => finish(true), () => finish(execFallback()));
+    } else {
+      finish(execFallback());
+    }
   });
   tb.appendChild(copyBtn);
 

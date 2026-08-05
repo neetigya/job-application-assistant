@@ -34,6 +34,16 @@ export interface FormLogEntry {
   };
 }
 
+export interface Project {
+  name: string;
+  startDate: string;
+  endDate: string;
+  isPresent: boolean;
+  description: string;
+  techStack: string;
+  url?: string;
+}
+
 export interface WorkHistory {
   jobTitle: string;
   company: string;
@@ -147,6 +157,7 @@ export interface ResumeData {
   voluntaryDisclosure?: VoluntaryDisclosure; // kept for backward compat; superseded by compliance
   compliance?: ComplianceAnswers;
   commonQuestions?: CommonQuestions;
+  projects?: Project[];
   lastUpdated?: string;
 }
 

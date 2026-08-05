@@ -1,5 +1,5 @@
 // Options page script
-import { ResumeData, WorkHistory, Education, ComplianceAnswers } from '../types/resume';
+import { ResumeData, WorkHistory, Education, ComplianceAnswers, Project } from '../types/resume';
 import { getTestResumeData } from '../utils/testDataStub';
 
 interface Question {
@@ -17,6 +17,7 @@ interface Preferences {
 
 let jobCount = 1;
 let educationCount = 1;
+let projectCount = 1;
 
 // ─── Job entry builder ────────────────────────────────────────────────────────
 
@@ -170,6 +171,87 @@ function refreshEducationHeaders() {
     btn.style.display = entries.length === 1 ? 'none' : '';
   });
   educationCount = entries.length;
+}
+
+// ─── Project entry builder ────────────────────────────────────────────────────
+
+function createProjectEntry(index: number, data?: Project): HTMLElement {
+  const entry = document.createElement('div');
+  entry.className = 'project-entry';
+  entry.dataset.index = String(index);
+
+  entry.innerHTML = `
+    <div class="entry-header">
+      <h4>Project ${index}</h4>
+      <button class="btn-remove" data-type="project">Remove</button>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Project Name</label>
+        <input type="text" class="proj-name" placeholder="My Awesome App" value="${escapeAttr(data?.name ?? '')}">
+      </div>
+      <div class="form-group">
+        <label>URL</label>
+        <input type="text" class="proj-url" placeholder="https://github.com/..." value="${escapeAttr(data?.url ?? '')}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Start Date</label>
+        <input type="text" class="proj-start-date" placeholder="MM/YYYY" value="${escapeAttr(data?.startDate ?? '')}">
+      </div>
+      <div class="form-group">
+        <label>End Date</label>
+        <input type="text" class="proj-end-date" placeholder="MM/YYYY" value="${escapeAttr(data?.endDate ?? '')}"
+          ${data?.isPresent ? 'disabled' : ''}>
+      </div>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" class="proj-is-present" ${data?.isPresent ? 'checked' : ''}>
+      <label>Currently working on this</label>
+    </div>
+
+    <div class="form-group">
+      <label>Description</label>
+      <textarea class="proj-description" placeholder="What does this project do?">${escapeHTML(data?.description ?? '')}</textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Tech Stack</label>
+      <input type="text" class="proj-tech-stack" placeholder="React, TypeScript, Node.js..." value="${escapeAttr(data?.techStack ?? '')}">
+    </div>
+  `;
+
+  const isPresentChk = entry.querySelector<HTMLInputElement>('.proj-is-present')!;
+  const endDateInput = entry.querySelector<HTMLInputElement>('.proj-end-date')!;
+
+  isPresentChk.addEventListener('change', () => {
+    endDateInput.disabled = isPresentChk.checked;
+    if (isPresentChk.checked) endDateInput.value = '';
+  });
+
+  const removeBtn = entry.querySelector<HTMLButtonElement>('.btn-remove')!;
+  removeBtn.addEventListener('click', () => {
+    entry.remove();
+    refreshProjectHeaders();
+  });
+
+  return entry;
+}
+
+function refreshProjectHeaders() {
+  const container = document.getElementById('projectEntriesContainer')!;
+  const entries = container.querySelectorAll<HTMLElement>('.project-entry');
+  entries.forEach((e, i) => {
+    const h4 = e.querySelector('h4')!;
+    h4.textContent = `Project ${i + 1}`;
+    const btn = e.querySelector<HTMLButtonElement>('.btn-remove')!;
+    btn.style.display = entries.length === 1 ? 'none' : '';
+  });
+  projectCount = entries.length;
 }
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -343,6 +425,23 @@ function buildResumeObject(): ResumeData {
     other: getVal('skillsOther'),
   };
 
+  // Projects
+  const projects: Project[] = [];
+  const projEntries = document.querySelectorAll<HTMLElement>('.project-entry');
+  projEntries.forEach((entry) => {
+    const isPresent = entry.querySelector<HTMLInputElement>('.proj-is-present')!.checked;
+    const urlVal = entry.querySelector<HTMLInputElement>('.proj-url')!.value.trim();
+    projects.push({
+      name: entry.querySelector<HTMLInputElement>('.proj-name')!.value.trim(),
+      startDate: entry.querySelector<HTMLInputElement>('.proj-start-date')!.value.trim(),
+      endDate: isPresent ? '' : entry.querySelector<HTMLInputElement>('.proj-end-date')!.value.trim(),
+      isPresent,
+      description: entry.querySelector<HTMLTextAreaElement>('.proj-description')!.value.trim(),
+      techStack: entry.querySelector<HTMLInputElement>('.proj-tech-stack')!.value.trim(),
+      ...(urlVal ? { url: urlVal } : {}),
+    });
+  });
+
   const profileSummary = (document.getElementById('profileSummary') as HTMLTextAreaElement)?.value.trim() || undefined;
 
   const onlinePresence = {
@@ -382,7 +481,7 @@ function buildResumeObject(): ResumeData {
     lgbtqIdentity: (lgbtqRaw as ComplianceAnswers['lgbtqIdentity']) || null,
   };
 
-  return { personal, workHistory, education, skills, profileSummary, onlinePresence, compliance, commonQuestions, lastUpdated: new Date().toISOString() };
+  return { personal, workHistory, education, skills, profileSummary, onlinePresence, compliance, commonQuestions, projects, lastUpdated: new Date().toISOString() };
 }
 
 // ─── Populate form from stored data ──────────────────────────────────────────
@@ -447,6 +546,20 @@ function populateForm(data: ResumeData) {
     educationCount = 1;
   }
   refreshEducationHeaders();
+
+  // Projects
+  const projContainer = document.getElementById('projectEntriesContainer')!;
+  projContainer.innerHTML = '';
+  if (data.projects && data.projects.length > 0) {
+    data.projects.forEach((proj, i) => {
+      projContainer.appendChild(createProjectEntry(i + 1, proj));
+    });
+    projectCount = data.projects.length;
+  } else {
+    projContainer.appendChild(createProjectEntry(1));
+    projectCount = 1;
+  }
+  refreshProjectHeaders();
 
   // Skills
   setVal('skillsBackend', data.skills.backend);
@@ -588,6 +701,13 @@ document.getElementById('addEducationBtn')?.addEventListener('click', () => {
   educationCount += 1;
   container.appendChild(createEducationEntry(educationCount));
   refreshEducationHeaders();
+});
+
+document.getElementById('addProjectBtn')?.addEventListener('click', () => {
+  const container = document.getElementById('projectEntriesContainer')!;
+  projectCount += 1;
+  container.appendChild(createProjectEntry(projectCount));
+  refreshProjectHeaders();
 });
 
 // ─── Preferred name toggle ────────────────────────────────────────────────────
@@ -945,6 +1065,10 @@ window.addEventListener('load', () => {
       const eduContainer = document.getElementById('educationEntriesContainer')!;
       eduContainer.appendChild(createEducationEntry(1));
       refreshEducationHeaders();
+
+      const projContainer = document.getElementById('projectEntriesContainer')!;
+      projContainer.appendChild(createProjectEntry(1));
+      refreshProjectHeaders();
     }
   });
 });

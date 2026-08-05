@@ -34,6 +34,18 @@ function formatResumeAsText(resume: ResumeData): string {
     lines.push('');
   }
 
+  if (resume.projects && resume.projects.length > 0) {
+    lines.push('=== PROJECTS ===');
+    resume.projects.forEach((proj) => {
+      const period = proj.isPresent ? `${proj.startDate} – Present` : `${proj.startDate}${proj.endDate ? ' – ' + proj.endDate : ''}`;
+      lines.push(`${proj.name} (${period})`);
+      if (proj.description) lines.push(`  ${proj.description}`);
+      if (proj.techStack)   lines.push(`  Tech: ${proj.techStack}`);
+      if (proj.url)         lines.push(`  ${proj.url}`);
+    });
+    lines.push('');
+  }
+
   if (resume.education.length > 0) {
     lines.push('=== EDUCATION ===');
     resume.education.forEach((edu) => {
