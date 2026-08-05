@@ -804,6 +804,8 @@ function fillSelectElements(resumeData: any): FieldLogEntry[] {
 
   selects.forEach(select => {
     if (select.disabled) return;
+    // Skip selects already set to a non-placeholder option
+    if (select.value.trim()) return;
     const hint = getFieldHint(select);
     const label = getFieldLabel(select);
 
@@ -970,6 +972,8 @@ function fillApplicationForm(resumeData: any): FillResult {
 
   inputs.forEach((input) => {
     if ((input as HTMLInputElement).readOnly || input.disabled) return;
+    // Skip fields already filled by the page (e.g. Greenhouse auto-populates name/email/phone)
+    if (input.value.trim()) return;
     // Skip React Select / custom-select typing inputs — these are handled by fillOpenEndedWithAI
     // via the known-field path. Filling them here with applyValueToField produces wrong text.
     if (input instanceof HTMLInputElement && isCustomSelectInput(input)) return;
