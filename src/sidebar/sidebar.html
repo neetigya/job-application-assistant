@@ -16,39 +16,15 @@
       </div>
     </div>
 
-    <div id="stale-warning" class="hidden">
-      <span id="stale-msg">JD captured from a different page.</span>
-      <div id="stale-actions">
-        <button class="stale-btn" id="stale-redetect">Re-detect</button>
-        <button class="stale-btn" id="stale-keep">Keep</button>
-        <button class="stale-btn" id="stale-clear">Clear</button>
-      </div>
-    </div>
-
     <div class="section">
-      <div class="section-label">Active Job</div>
-      <div id="job-header">
-        <div id="job-title-row">
-          <span id="job-title-display">No job loaded</span>
-          <div id="job-header-btns">
-            <button class="sm-btn" id="copy-jd-btn">Copy JD</button>
-            <button class="sm-btn danger" id="clear-job-btn">Clear</button>
-          </div>
-        </div>
-        <div id="job-preview"></div>
-        <button id="expand-jd-btn" class="expand-btn">▸ Edit job description</button>
-        <div id="jd-expanded" class="hidden">
-          <textarea id="jd-textarea" placeholder="Job description will appear here after capture…"></textarea>
-          <div class="row-end">
-            <button class="sm-btn" id="save-jd-btn">Save</button>
-          </div>
-        </div>
-        <div id="clear-confirm" class="hidden confirm-bar">
-          <span>Clear this job?</span>
-          <button class="sm-btn danger" id="clear-confirm-yes">Yes, clear</button>
-          <button class="sm-btn" id="clear-confirm-no">Cancel</button>
+      <div class="section-label-row">
+        <span class="section-label">Recent Jobs</span>
+        <div id="jd-action-btns" class="hidden">
+          <button class="sm-btn" id="copy-jd-btn">Copy JD</button>
+          <button class="sm-btn danger" id="deselect-jd-btn">Deselect</button>
         </div>
       </div>
+      <div id="jd-list"></div>
     </div>
 
     <div class="section">

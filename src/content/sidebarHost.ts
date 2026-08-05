@@ -5,48 +5,90 @@ const SIDEBAR_WIDTH = 390;
 const MSG_DOWN = 'JAE_SIDEBAR';      // host  → sidebar iframe
 const MSG_UP   = 'JAE_SIDEBAR_REQ';  // sidebar → host
 
-export interface ActiveJob {
-  jobDescription: string;
+export interface JDEntry {
+  id:             string;
   jobTitle:       string;
   company:        string;
+  jobDescription: string;
   sourceUrl:      string | null;
-  questions:   Array<{ question: string; answer: string; ts: number }>;
-  coverLetters: Array<{ text: string; ts: number }>;
+  addedAt:        number;
 }
 
-const STORAGE_KEY = 'jae_active_job';
-
-const emptyJob = (): ActiveJob => ({
-  jobDescription: '',
-  jobTitle: '',
-  company: '',
-  sourceUrl: null,
-  questions: [],
-  coverLetters: [],
-});
+const JD_HISTORY_KEY = 'jae_jd_history';   // chrome.storage.local  — persists across restarts
+const JD_ACTIVE_KEY  = 'jae_active_jd_id'; // chrome.storage.session — cleared on browser close
+const JD_MAX = 10;
 
 // Module state (top frame only)
-let activeJob: ActiveJob   = emptyJob();
+let jdHistory: JDEntry[]      = [];
+let activeJdId: string | null = null;
 let sidebarIframe: HTMLIFrameElement | null = null;
-let sidebarReady  = false;
+let sidebarReady   = false;
 let sidebarVisible = false;
 let pendingMsgs: Array<{ action: string; data?: unknown }> = [];
-let pushActive    = false;
+let pushActive     = false;
 let jobDataGetter: (() => { title?: string; company?: string } | null) | null = null;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function hashJD(text: string): string {
+  let h = 5381;
+  const len = Math.min(text.length, 3000);
+  for (let i = 0; i < len; i++) {
+    h = ((h << 5) + h) + text.charCodeAt(i);
+    h = h & h;
+  }
+  return (h >>> 0).toString(36);
+}
 
 // ── Storage ───────────────────────────────────────────────────────────────────
 
-function loadActiveJob(): Promise<void> {
-  return new Promise(resolve => {
-    chrome.storage.local.get([STORAGE_KEY], result => {
-      if (result[STORAGE_KEY]) activeJob = result[STORAGE_KEY] as ActiveJob;
-      resolve();
-    });
-  });
+async function loadJDState(): Promise<void> {
+  const local = await new Promise<any>(r => chrome.storage.local.get([JD_HISTORY_KEY], r));
+  jdHistory = (local[JD_HISTORY_KEY] as JDEntry[]) ?? [];
+  try {
+    const session = await new Promise<any>(r => chrome.storage.session.get([JD_ACTIVE_KEY], r));
+    activeJdId = session[JD_ACTIVE_KEY] ?? null;
+  } catch {
+    activeJdId = null;
+  }
 }
 
-function saveActiveJob(): void {
-  chrome.storage.local.set({ [STORAGE_KEY]: activeJob });
+function saveHistory(): void {
+  chrome.storage.local.set({ [JD_HISTORY_KEY]: jdHistory });
+}
+
+function saveActiveId(): void {
+  try {
+    chrome.storage.session.set({ [JD_ACTIVE_KEY]: activeJdId });
+  } catch {}
+}
+
+function addToHistory(text: string): void {
+  const id = hashJD(text);
+  const existingIdx = jdHistory.findIndex(e => e.id === id);
+  let entry: JDEntry;
+  if (existingIdx >= 0) {
+    // Duplicate — move to top and refresh timestamp
+    [entry] = jdHistory.splice(existingIdx, 1);
+    entry.addedAt = Date.now();
+  } else {
+    entry = {
+      id,
+      jobTitle:       '',
+      company:        '',
+      jobDescription: text,
+      sourceUrl:      window.location.href,
+      addedAt:        Date.now(),
+    };
+    if (jobDataGetter) {
+      const jd = jobDataGetter();
+      if (jd?.title)   entry.jobTitle = jd.title;
+      if (jd?.company) entry.company  = jd.company;
+    }
+  }
+  jdHistory.unshift(entry);
+  if (jdHistory.length > JD_MAX) jdHistory = jdHistory.slice(0, JD_MAX);
+  saveHistory();
 }
 
 // ── Iframe lifecycle ──────────────────────────────────────────────────────────
@@ -87,7 +129,6 @@ export function showSidebar(): void {
     document.documentElement.style.transition = 'margin-right 0.28s cubic-bezier(0.4,0,0.2,1)';
     pushActive = true;
   }
-  // Micro-delay so the transition fires after the element is in the DOM
   requestAnimationFrame(() => { root.style.right = '0px'; });
   sidebarVisible = true;
 }
@@ -109,7 +150,7 @@ export function hideSidebar(): void {
 export function postToSidebar(action: string, data?: unknown): void {
   if (!sidebarReady) {
     pendingMsgs.push({ action, data });
-    buildSidebar(); // ensure it's being built
+    buildSidebar();
     return;
   }
   sidebarIframe?.contentWindow?.postMessage({ type: MSG_DOWN, action, data }, '*');
@@ -126,23 +167,9 @@ function deliverPending(): void {
 
 export function captureAsJD(text: string): void {
   if (window !== window.top) return;
-
-  activeJob.jobDescription = activeJob.jobDescription
-    ? activeJob.jobDescription + '\n\n' + text
-    : text;
-
-  if (!activeJob.sourceUrl) activeJob.sourceUrl = window.location.href;
-
-  // Populate title/company from page if blank
-  if ((!activeJob.jobTitle || !activeJob.company) && jobDataGetter) {
-    const jd = jobDataGetter();
-    if (jd?.title   && !activeJob.jobTitle) activeJob.jobTitle = jd.title;
-    if (jd?.company && !activeJob.company)  activeJob.company  = jd.company;
-  }
-
-  saveActiveJob();
+  addToHistory(text);
   showSidebar();
-  postToSidebar('activeJobUpdated', activeJob);
+  postToSidebar('historyUpdated', { history: jdHistory, activeJdId });
 }
 
 export function captureAsQuestion(text: string): void {
@@ -154,7 +181,6 @@ export function captureAsQuestion(text: string): void {
 // ── Message listeners (top frame only) ───────────────────────────────────────
 
 function initListeners(): void {
-  // Messages from sidebar iframe (upward postMessage)
   window.addEventListener('message', (e: MessageEvent) => {
     if (e.data?.type !== MSG_UP) return;
     const { action, data, reqId } = e.data as { action: string; data: any; reqId?: number };
@@ -162,31 +188,35 @@ function initListeners(): void {
     if (action === 'sidebarReady') {
       sidebarReady = true;
       deliverPending();
-      postToSidebar('init', { activeJob, url: window.location.href });
+      postToSidebar('init', { history: jdHistory, activeJdId, url: window.location.href });
       return;
     }
     if (action === 'hideSidebar') { hideSidebar(); return; }
 
-    if (action === 'clearActiveJob') {
-      activeJob = emptyJob();
-      saveActiveJob();
-      postToSidebar('activeJobUpdated', activeJob);
+    if (action === 'selectJd') {
+      const id = (data as any)?.id as string;
+      if (id && jdHistory.some(e => e.id === id)) {
+        activeJdId = id;
+        saveActiveId();
+        postToSidebar('historyUpdated', { history: jdHistory, activeJdId });
+      }
       return;
     }
-    if (action === 'saveJobMeta') {
-      activeJob = { ...activeJob, ...(data as Partial<ActiveJob>) };
-      saveActiveJob();
+    if (action === 'deselectJd') {
+      activeJdId = null;
+      saveActiveId();
+      postToSidebar('historyUpdated', { history: jdHistory, activeJdId });
       return;
     }
-    if (action === 'appendQuestion') {
-      activeJob.questions.push(data as ActiveJob['questions'][0]);
-      saveActiveJob();
-      return;
-    }
-    if (action === 'appendCoverLetter') {
-      activeJob.coverLetters.push(data as ActiveJob['coverLetters'][0]);
-      if (activeJob.coverLetters.length > 2) activeJob.coverLetters = activeJob.coverLetters.slice(-2);
-      saveActiveJob();
+    if (action === 'removeJd') {
+      const id = (data as any)?.id as string;
+      jdHistory = jdHistory.filter(e => e.id !== id);
+      if (activeJdId === id) {
+        activeJdId = null;
+        saveActiveId();
+      }
+      saveHistory();
+      postToSidebar('historyUpdated', { history: jdHistory, activeJdId });
       return;
     }
 
@@ -198,7 +228,6 @@ function initListeners(): void {
     });
   });
 
-  // Messages relayed from background (originally from any frame)
   chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     if (window !== window.top) return;
 
@@ -214,7 +243,7 @@ function initListeners(): void {
     }
     if (request.action === 'jae_open_sidebar') {
       showSidebar();
-      if (sidebarReady) postToSidebar('init', { activeJob, url: window.location.href });
+      if (sidebarReady) postToSidebar('init', { history: jdHistory, activeJdId, url: window.location.href });
       sendResponse({ ok: true });
       return;
     }
@@ -232,8 +261,8 @@ function initListeners(): void {
 export async function initSidebarHost(
   getJobData: () => { title?: string; company?: string } | null
 ): Promise<void> {
-  if (window !== window.top) return; // sub-frames skip entirely
+  if (window !== window.top) return;
   jobDataGetter = getJobData;
-  await loadActiveJob();
+  await loadJDState();
   initListeners();
 }

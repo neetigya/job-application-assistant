@@ -5,28 +5,39 @@
 const MSG_DOWN = 'JAE_SIDEBAR';
 const MSG_UP   = 'JAE_SIDEBAR_REQ';
 
-interface ActiveJob {
-  jobDescription: string;
+interface JDEntry {
+  id:             string;
   jobTitle:       string;
   company:        string;
+  jobDescription: string;
   sourceUrl:      string | null;
-  questions:   Array<{ question: string; answer: string; ts: number }>;
-  coverLetters: Array<{ text: string; ts: number }>;
-}
-
-function emptyJob(): ActiveJob {
-  return { jobDescription: '', jobTitle: '', company: '', sourceUrl: null, questions: [], coverLetters: [] };
+  addedAt:        number;
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let activeJob: ActiveJob = emptyJob();
+let jdHistory: JDEntry[]      = [];
+let activeJdId: string | null = null;
 let hasResume  = false;
 let resumeText = '';
 let currentPageUrl = '';
 let reqCounter = 0;
 let pendingReqId: number | null = null;
 
-// ── Formatting helper (mirrors popup.ts; keeps sidebar self-contained) ────────
+function getActiveEntry(): JDEntry | null {
+  return activeJdId ? (jdHistory.find(e => e.id === activeJdId) ?? null) : null;
+}
+
+function jdEntryLabel(e: JDEntry): string {
+  if (e.jobTitle && e.company) return `${e.jobTitle} — ${e.company}`;
+  if (e.jobTitle) return e.jobTitle;
+  if (e.company)  return e.company;
+  if (e.sourceUrl) {
+    try { return new URL(e.sourceUrl).hostname; } catch {}
+  }
+  return 'Untitled';
+}
+
+// ── Resume formatter (mirrors popup.ts; sidebar is self-contained) ────────────
 function formatResume(resume: any): string {
   if (!resume?.personal) return '';
   const lines: string[] = [];
@@ -51,6 +62,19 @@ function formatResume(resume: any): string {
     }
     lines.push('');
   }
+  if (resume.projects?.length) {
+    lines.push('=== PROJECTS ===');
+    for (const pr of resume.projects) {
+      const period = pr.isPresent
+        ? `${pr.startDate} – Present`
+        : `${pr.startDate}${pr.endDate ? ' – ' + pr.endDate : ''}`;
+      lines.push(`${pr.name} (${period})`);
+      if (pr.description) lines.push(`  ${pr.description}`);
+      if (pr.techStack)   lines.push(`  Tech: ${pr.techStack}`);
+      if (pr.url)         lines.push(`  ${pr.url}`);
+    }
+    lines.push('');
+  }
   if (resume.education?.length) {
     lines.push('=== EDUCATION ===');
     for (const e of resume.education) {
@@ -71,19 +95,14 @@ function formatResume(resume: any): string {
   return lines.join('\n');
 }
 
-// ── cleanGeneratedText ────────────────────────────────────────────────────────
-// Shared post-processor for all three output types: answers, cover letters, explanations.
-// 1. Strip any leading markdown header line(s) (lines starting with #) + trailing blank line.
-// 2. Replace em-dash (—) and en-dash (–) with ", " as belt-and-suspenders on top of the prompt rule.
+// ── Text post-processor ───────────────────────────────────────────────────────
 function cleanGeneratedText(raw: string): string {
-  // Remove leading "# Heading\n" or "## Heading\n\n" blocks (one or more)
   let text = raw.replace(/^(#{1,6}\s[^\n]*\n+)+/, '');
-  // Em-dash (U+2014) and en-dash (U+2013) → comma-space
   text = text.replace(/[—–]/g, ', ');
   return text.trim();
 }
 
-// ── DOM references ────────────────────────────────────────────────────────────
+// ── DOM helper ────────────────────────────────────────────────────────────────
 const $ = (id: string) => document.getElementById(id)!;
 
 // ── postMessage to parent (content script) ───────────────────────────────────
@@ -103,76 +122,95 @@ function apiRequest(action: string, data: Record<string, unknown>): Promise<any>
     };
     window.addEventListener('message', handler);
     sendUp(action, data, id);
-    // Timeout safety
-    setTimeout(() => {
-      window.removeEventListener('message', handler);
-      resolve(null);
-    }, 60_000);
+    setTimeout(() => { window.removeEventListener('message', handler); resolve(null); }, 60_000);
   });
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
-function jobLabel(): string {
-  if (activeJob.jobTitle && activeJob.company) return `${activeJob.jobTitle} — ${activeJob.company}`;
-  if (activeJob.jobTitle) return activeJob.jobTitle;
-  if (activeJob.company)  return activeJob.company;
-  if (activeJob.sourceUrl) {
-    try { return new URL(activeJob.sourceUrl).hostname; } catch { return 'Untitled job'; }
-  }
-  return 'No job loaded';
-}
-
-function updateJobDisplay(): void {
-  ($('job-title-display') as HTMLElement).textContent = jobLabel();
-  const preview = activeJob.jobDescription.slice(0, 60).replace(/\s+/g, ' ');
-  ($('job-preview') as HTMLElement).textContent = preview + (activeJob.jobDescription.length > 60 ? '…' : '');
-  ($('jd-textarea') as HTMLTextAreaElement).value = activeJob.jobDescription;
-  updateContextIndicator();
-  checkStaleWarning();
-}
 
 function updateContextIndicator(): void {
   const el = $('context-indicator');
+  const active = getActiveEntry();
   if (!hasResume) {
     el.textContent = '⚠ No resume saved — open Settings to add one';
     el.className = 'warn';
-  } else if (activeJob.jobDescription) {
-    el.textContent = 'Using: resume + job description';
+  } else if (active) {
+    const label = active.jobTitle || active.company || 'job description';
+    el.textContent = `Using: resume + ${label}`;
     el.className = '';
   } else {
-    el.textContent = 'Using: resume only (no job description captured yet)';
+    el.textContent = 'No active job — answers will use resume only';
     el.className = '';
   }
-  const generateBtn = $('generate-answer-btn') as HTMLButtonElement;
-  const clBtn       = $('cover-letter-btn')    as HTMLButtonElement;
-  generateBtn.disabled = !hasResume;
-  clBtn.disabled       = !hasResume;
+  ($('generate-answer-btn') as HTMLButtonElement).disabled = !hasResume;
+  ($('cover-letter-btn')    as HTMLButtonElement).disabled = !hasResume;
 }
 
-function checkStaleWarning(): void {
-  const warningEl = $('stale-warning');
-  if (!activeJob.sourceUrl || !activeJob.jobDescription || !currentPageUrl) {
-    warningEl.classList.add('hidden');
+function renderJDList(): void {
+  const listEl     = $('jd-list');
+  const actionBtns = $('jd-action-btns');
+  const active     = getActiveEntry();
+
+  listEl.innerHTML = '';
+
+  if (jdHistory.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'jd-empty';
+    empty.textContent = 'No JDs saved yet. Select text on a job page and click + JD.';
+    listEl.appendChild(empty);
+    actionBtns.classList.add('hidden');
+    updateContextIndicator();
     return;
   }
-  try {
-    const captured  = new URL(activeJob.sourceUrl).hostname;
-    const current   = new URL(currentPageUrl).hostname;
-    if (captured !== current) {
-      warningEl.classList.remove('hidden');
-      ($('stale-msg') as HTMLElement).textContent =
-        `JD captured from ${captured}. You are on ${current}.`;
-    } else {
-      warningEl.classList.add('hidden');
+
+  actionBtns.classList.toggle('hidden', !active);
+
+  jdHistory.forEach(entry => {
+    const isActive = entry.id === activeJdId;
+    const item = document.createElement('div');
+    item.className = 'jd-item' + (isActive ? ' active' : '');
+    item.title = entry.jobDescription; // native browser tooltip = full JD on hover
+
+    const top = document.createElement('div');
+    top.className = 'jd-item-top';
+
+    const label = document.createElement('span');
+    label.className = 'jd-item-label';
+    label.textContent = jdEntryLabel(entry);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'jd-item-remove';
+    removeBtn.textContent = '✕';
+    removeBtn.title = 'Remove from history';
+    removeBtn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      sendUp('removeJd', { id: entry.id });
+    });
+
+    top.appendChild(label);
+    top.appendChild(removeBtn);
+
+    const preview = document.createElement('div');
+    preview.className = 'jd-item-preview';
+    const previewText = entry.jobDescription.slice(0, 90).replace(/\s+/g, ' ');
+    preview.textContent = entry.jobDescription.length > 90 ? previewText + '…' : previewText;
+
+    item.appendChild(top);
+    item.appendChild(preview);
+
+    if (!isActive) {
+      item.addEventListener('click', () => sendUp('selectJd', { id: entry.id }));
     }
-  } catch {
-    warningEl.classList.add('hidden');
-  }
+
+    listEl.appendChild(item);
+  });
+
+  updateContextIndicator();
 }
 
 function showResult(text: string): void {
   const clean = cleanGeneratedText(text);
-  const sec = $('result-section');
+  const sec  = $('result-section');
   const area = $('result-area');
   area.textContent = clean;
   sec.classList.remove('hidden');
@@ -214,7 +252,8 @@ async function runGenerate(type: 'answer' | 'coverLetter'): Promise<void> {
   const myReqId = ++reqCounter;
   pendingReqId = myReqId;
 
-  const question = ($('question-input') as HTMLTextAreaElement).value.trim();
+  const active     = getActiveEntry();
+  const question   = ($('question-input') as HTMLTextAreaElement).value.trim();
   const resultArea = $('result-area');
   const resultSec  = $('result-section');
 
@@ -224,23 +263,23 @@ async function runGenerate(type: 'answer' | 'coverLetter'): Promise<void> {
   let response: any;
   if (type === 'answer') {
     response = await apiRequest('generateAnswer', {
-      fieldLabel:    question || 'General answer',
-      fieldHint:     '',
-      resumeContent: resumeText,
-      jobDescription: activeJob.jobDescription,
-      companyName:   activeJob.company,
+      fieldLabel:     question || 'General answer',
+      fieldHint:      '',
+      resumeContent:  resumeText,
+      jobDescription: active?.jobDescription || '',
+      companyName:    active?.company || '',
     });
   } else {
     response = await apiRequest('generateCoverLetter', {
-      resumeContent: resumeText,
-      jobDescription: activeJob.jobDescription,
-      companyName:   activeJob.company,
-      jobTitle:      activeJob.jobTitle,
-      question:      question || '',
+      resumeContent:  resumeText,
+      jobDescription: active?.jobDescription || '',
+      companyName:    active?.company || '',
+      jobTitle:       active?.jobTitle || '',
+      question:       question || '',
     });
   }
 
-  if (pendingReqId !== myReqId) return; // superseded by newer request
+  if (pendingReqId !== myReqId) return; // superseded
   pendingReqId = null;
 
   if (!response) {
@@ -253,40 +292,15 @@ async function runGenerate(type: 'answer' | 'coverLetter'): Promise<void> {
     : (response.coverLetter || '');
 
   if (!rawText) {
-    const errText = response.error ? errorHtml(response.error) : '✕ Empty response';
-    resultArea.textContent = errText;
+    resultArea.textContent = response.error ? errorHtml(response.error) : '✕ Empty response';
     return;
   }
 
-  showResult(rawText); // showResult calls cleanGeneratedText internally
-  const cleanText = cleanGeneratedText(rawText);
-
-  // Persist the cleaned text
-  if (type === 'answer') {
-    const entry = { question: question || '(no question)', answer: cleanText, ts: Date.now() };
-    activeJob.questions.push(entry);
-    sendUp('appendQuestion', entry);
-  } else {
-    const entry = { text: cleanText, ts: Date.now() };
-    activeJob.coverLetters.push(entry);
-    if (activeJob.coverLetters.length > 2) activeJob.coverLetters = activeJob.coverLetters.slice(-2);
-    sendUp('appendCoverLetter', entry);
-  }
-}
-
-// ── Expand/collapse JD ────────────────────────────────────────────────────────
-let jdExpanded = false;
-function toggleJdExpand(): void {
-  jdExpanded = !jdExpanded;
-  $('jd-expanded').classList.toggle('hidden', !jdExpanded);
-  ($('expand-jd-btn') as HTMLElement).textContent = jdExpanded
-    ? '▾ Collapse job description'
-    : '▸ Edit job description';
+  showResult(rawText);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init(): Promise<void> {
-  // Load resume from storage
   const stored = await new Promise<any>(resolve => {
     chrome.storage.local.get(['resume'], r => resolve(r.resume || null));
   });
@@ -295,44 +309,24 @@ async function init(): Promise<void> {
     resumeText = formatResume(stored);
   }
 
-  updateJobDisplay();
+  renderJDList();
 
-  // Wire up buttons
   $('close-btn').addEventListener('click', () => sendUp('hideSidebar'));
   $('settings-btn').addEventListener('click', () => chrome.runtime.openOptionsPage());
 
-  $('expand-jd-btn').addEventListener('click', toggleJdExpand);
-  $('save-jd-btn').addEventListener('click', () => {
-    activeJob.jobDescription = ($('jd-textarea') as HTMLTextAreaElement).value;
-    sendUp('saveJobMeta', { jobDescription: activeJob.jobDescription });
-    updateJobDisplay();
-    toggleJdExpand();
-  });
-
   $('copy-jd-btn').addEventListener('click', () => {
-    copyToClipboard(activeJob.jobDescription);
+    const active = getActiveEntry();
+    if (!active) return;
+    copyToClipboard(active.jobDescription);
     flashBtn($('copy-jd-btn') as HTMLButtonElement, 'Copied ✓');
   });
 
-  $('clear-job-btn').addEventListener('click', () => {
-    $('clear-confirm').classList.remove('hidden');
-    $('job-header-btns').classList.add('hidden');
-  });
-  $('clear-confirm-no').addEventListener('click', () => {
-    $('clear-confirm').classList.add('hidden');
-    $('job-header-btns').classList.remove('hidden');
-  });
-  $('clear-confirm-yes').addEventListener('click', () => {
-    $('clear-confirm').classList.add('hidden');
-    $('job-header-btns').classList.remove('hidden');
-    sendUp('clearActiveJob');
-    activeJob = emptyJob();
-    updateJobDisplay();
-    $('result-section').classList.add('hidden');
+  $('deselect-jd-btn').addEventListener('click', () => {
+    sendUp('deselectJd');
   });
 
   $('generate-answer-btn').addEventListener('click', () => runGenerate('answer'));
-  $('cover-letter-btn').addEventListener('click', () => runGenerate('coverLetter'));
+  $('cover-letter-btn').addEventListener('click',    () => runGenerate('coverLetter'));
 
   $('copy-result-btn').addEventListener('click', () => {
     copyToClipboard($('result-area').textContent || '');
@@ -343,20 +337,6 @@ async function init(): Promise<void> {
     flashBtn($('copy-explain-btn') as HTMLButtonElement, 'Copied ✓');
   });
 
-  // Stale warning buttons
-  $('stale-keep').addEventListener('click', () => $('stale-warning').classList.add('hidden'));
-  $('stale-clear').addEventListener('click', () => {
-    sendUp('clearActiveJob');
-    activeJob = emptyJob();
-    updateJobDisplay();
-  });
-  $('stale-redetect').addEventListener('click', () => {
-    // Re-request job data from current page via parent
-    sendUp('redetectJobData');
-    $('stale-warning').classList.add('hidden');
-  });
-
-  // Announce ready to host
   sendUp('sidebarReady');
 }
 
@@ -366,17 +346,17 @@ window.addEventListener('message', (e: MessageEvent) => {
   const { action, data } = e.data as { action: string; data: any };
 
   if (action === 'init') {
-    if (data?.activeJob) {
-      activeJob = data.activeJob as ActiveJob;
-    }
-    currentPageUrl = data?.url || '';
-    updateJobDisplay();
+    jdHistory      = data?.history    ?? [];
+    activeJdId     = data?.activeJdId ?? null;
+    currentPageUrl = data?.url        ?? '';
+    renderJDList();
     return;
   }
 
-  if (action === 'activeJobUpdated') {
-    activeJob = data as ActiveJob;
-    updateJobDisplay();
+  if (action === 'historyUpdated') {
+    jdHistory  = data?.history    ?? [];
+    activeJdId = data?.activeJdId ?? null;
+    renderJDList();
     return;
   }
 
@@ -390,7 +370,7 @@ window.addEventListener('message', (e: MessageEvent) => {
   if (action === 'showExplain') {
     const result = data as { ok: boolean; text?: string; error?: string };
     if (result.ok && result.text) {
-      showExplainResult(result.text); // showExplainResult calls cleanGeneratedText internally
+      showExplainResult(result.text);
     } else {
       const sec  = $('explain-section');
       const area = $('explain-area');

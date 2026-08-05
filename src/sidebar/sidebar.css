@@ -263,3 +263,77 @@ html, body {
   color: var(--muted);
   font-style: italic;
 }
+
+/* ── Recent Jobs section ──────────────────────────────────────── */
+.section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.section-label-row .section-label { margin-bottom: 0; }
+#jd-action-btns { display: flex; gap: 4px; flex-shrink: 0; }
+
+.jd-empty {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  padding: 4px 0;
+}
+
+.jd-item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.jd-item:last-child { margin-bottom: 0; }
+.jd-item:hover { border-color: var(--accent); background: #eff6ff; }
+.jd-item.active {
+  border-left: 3px solid var(--accent);
+  background: #eff6ff;
+  cursor: default;
+}
+
+.jd-item-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.jd-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.jd-item.active .jd-item-label { color: var(--accent); }
+
+.jd-item-remove {
+  all: unset;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--muted);
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  line-height: 1.4;
+  opacity: 0.5;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
+}
+.jd-item-remove:hover { opacity: 1; background: var(--border); color: var(--danger); }
+
+.jd-item-preview {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 3px;
+}

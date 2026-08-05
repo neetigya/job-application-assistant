@@ -413,13 +413,13 @@ function showToolbar(editableEl: HTMLElement | null, anchorRect: DOMRect): void 
       const text = savedSel?.text || '';
       if (!text) return;
       hideToolbar();
-      showPill(document.documentElement, '✏ Adding to JD…');
+      showPill(document.documentElement, '✏ Saving to history…');
       chrome.runtime.sendMessage(
         { action: 'jae_capture_jd', text, url: window.location.href },
         (res) => {
           hidePill();
           if (res?.ok) {
-            showPill(document.documentElement, '✓ Added to Job Description');
+            showPill(document.documentElement, '✓ Saved to JD history');
           } else {
             showPill(document.documentElement, '✕ Could not add', true);
           }
@@ -640,14 +640,20 @@ function onContextMenu(): void {
 }
 
 // ── Active-job label helpers ──────────────────────────────────────────────────
-function refreshJobLabel(job: any): void {
-  if (!job?.jobDescription) { activeJobLabel = ''; return; }
-  if (job.jobTitle && job.company)  { activeJobLabel = `${job.jobTitle} — ${job.company}`; return; }
-  if (job.jobTitle)                 { activeJobLabel = job.jobTitle; return; }
-  if (job.company)                  { activeJobLabel = job.company; return; }
-  if (job.sourceUrl) {
-    try { activeJobLabel = new URL(job.sourceUrl).hostname; return; } catch {}
-  }
+const JD_HISTORY_KEY = 'jae_jd_history';
+const JD_ACTIVE_KEY  = 'jae_active_jd_id';
+
+let jdHistoryCache: Array<{ id: string; jobTitle: string; company: string }> = [];
+let activeJdIdCache: string | null = null;
+
+function refreshJobLabel(): void {
+  const entry = activeJdIdCache
+    ? jdHistoryCache.find(e => e.id === activeJdIdCache)
+    : null;
+  if (!entry) { activeJobLabel = ''; return; }
+  if (entry.jobTitle && entry.company) { activeJobLabel = `${entry.jobTitle} — ${entry.company}`; return; }
+  if (entry.jobTitle) { activeJobLabel = entry.jobTitle; return; }
+  if (entry.company)  { activeJobLabel = entry.company;  return; }
   activeJobLabel = 'current job';
 }
 
@@ -657,10 +663,25 @@ export function initSelectionToolbar(writer: FieldWriter): void {
   window.__jaeToolbarLoaded = true;
   writeField = writer;
 
-  // Load active job label for capture button
-  chrome.storage.local.get(['jae_active_job'], (result) => refreshJobLabel(result.jae_active_job));
-  chrome.storage.onChanged.addListener((changes) => {
-    if (changes.jae_active_job) refreshJobLabel(changes.jae_active_job.newValue);
+  // Load active JD label for the +JD capture button
+  chrome.storage.local.get([JD_HISTORY_KEY], r => {
+    jdHistoryCache = (r[JD_HISTORY_KEY] as typeof jdHistoryCache) || [];
+    try {
+      chrome.storage.session.get([JD_ACTIVE_KEY], r2 => {
+        activeJdIdCache = r2[JD_ACTIVE_KEY] || null;
+        refreshJobLabel();
+      });
+    } catch { refreshJobLabel(); }
+  });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes[JD_HISTORY_KEY]) {
+      jdHistoryCache = changes[JD_HISTORY_KEY].newValue || [];
+      refreshJobLabel();
+    }
+    if (area === 'session' && changes[JD_ACTIVE_KEY]) {
+      activeJdIdCache = changes[JD_ACTIVE_KEY].newValue || null;
+      refreshJobLabel();
+    }
   });
 
   document.addEventListener('mouseup',     onMouseUp);
