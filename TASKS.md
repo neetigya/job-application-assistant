@@ -6,6 +6,9 @@
 
 ## Completed
 
+- [x] Personal Q&A Bank (2026-08-05)
+  Free-flow entry → Claude parses into structured Q&A pairs → preview with similarity warnings → save. Stored in jae_qa_bank (separate from resume). Injected into generateAnswer and generateCoverLetter prompts automatically. Inline edit/delete. Migrates old 'questions' data on first load.
+
 - [x] Skip already-filled fields (2026-08-05)
   First pass (pattern-matching) and fillSelectElements now skip inputs/selects with non-empty values. AI second pass already did this. Fixes Greenhouse overwriting pre-filled name/email/phone.
 

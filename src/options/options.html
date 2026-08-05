@@ -193,6 +193,56 @@
     .question-item .q-text { font-size: 14px; color: #ddd; font-weight: 500; margin-bottom: 4px; }
     .question-item .a-text { font-size: 12px; color: #888; }
 
+    /* ── Q&A Bank ─────────────────────────────────────────── */
+    .qa-preview-card {
+      background: #252525;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .qa-sim-warning {
+      background: #26200a;
+      border: 1px solid #5a4800;
+      border-radius: 5px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #c8a020;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .qa-replace-label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: #aaa;
+      cursor: pointer;
+      margin: 0;
+      font-size: 12px;
+    }
+    .qa-replace-label input[type=checkbox] { width: auto; accent-color: #4a9eff; }
+    .qa-bank-item {
+      background: #252525;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+    }
+    .qa-bank-item .qa-q { font-size: 13px; font-weight: 600; color: #ddd; margin-bottom: 4px; }
+    .qa-bank-item .qa-a { font-size: 12px; color: #888; white-space: pre-wrap; }
+    .qa-bank-item .qa-actions { margin-top: 10px; display: flex; gap: 8px; }
+    .qa-bank-item .qa-view { }
+    .qa-bank-item.editing .qa-view { display: none; }
+    .qa-bank-item .qa-edit-form { display: none; }
+    .qa-bank-item.editing .qa-edit-form { display: block; }
+    .qa-bank-empty { color: #666; font-size: 13px; padding: 8px 0; }
+    #qaPreviewPanel { display: none; margin-top: 20px; padding-top: 16px; border-top: 1px solid #333; }
+    #qaBankSection { margin-top: 24px; padding-top: 20px; border-top: 1px solid #333; }
+    #qaBankHeader { font-size: 13px; font-weight: 600; color: #aaa; margin-bottom: 12px; }
+
     /* ===== NEW RESUME FORM STYLES ===== */
     .form-row { display: flex; gap: 16px; margin-bottom: 16px; }
     .form-row .form-group { flex: 1; }
@@ -282,7 +332,7 @@
     <a class="nav-item" href="#projects">Projects</a>
     <a class="nav-item" href="#api-key">API Key</a>
     <a class="nav-item" href="#preferences">Preferences</a>
-    <a class="nav-item" href="#questions">Common Questions</a>
+    <a class="nav-item" href="#questions">Q&amp;A Bank</a>
     <a class="nav-item" href="#form-logs">Form Logs</a>
   </nav>
 
@@ -677,21 +727,34 @@
       <div id="preferencesStatus" class="status"></div>
     </div>
 
-    <!-- ===== COMMON QUESTIONS SECTION ===== -->
+    <!-- ===== Q&A BANK SECTION ===== -->
     <div class="card" id="questions">
-      <div class="card-title">Common Application Questions</div>
-      <div class="card-desc">Store answers to questions you're frequently asked. These will be reused across applications.</div>
+      <div class="card-title">Personal Q&amp;A Bank</div>
+      <div class="card-desc">Paste questions and answers from past applications. Claude uses these as context when generating answers — so your real experience comes through, not generic text.</div>
 
-      <label for="questionText">Question</label>
-      <input type="text" id="questionText" placeholder="e.g., Why do you want to work at this company?">
+      <label for="qaFreeText">Paste your experience (free-form)</label>
+      <textarea id="qaFreeText" style="min-height:130px;" placeholder="Write naturally — e.g. 'An interviewer asked about my leadership style and I said I prefer collaborative decisions with clear ownership. They also asked how I use AI in my workflow...'"></textarea>
 
-      <label for="answerText">Your Answer</label>
-      <textarea id="answerText" placeholder="Your answer here..."></textarea>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:4px;">
+        <button class="btn-primary" id="parseQABtn">Parse &amp; Preview</button>
+      </div>
+      <div id="qaParseStatus" class="status"></div>
 
-      <button class="btn-primary" id="saveQuestionBtn">Save Question &amp; Answer</button>
-      <div id="questionStatus" class="status"></div>
+      <!-- Preview panel — shown after parsing -->
+      <div id="qaPreviewPanel">
+        <div id="qaPreviewHeader" style="font-size:13px;color:#aaa;margin-bottom:12px;"></div>
+        <div id="qaPreviewPairs"></div>
+        <div style="display:flex;gap:10px;margin-top:4px;">
+          <button class="btn-primary" id="qaSaveAllBtn">Save All</button>
+          <button class="btn-secondary" id="qaDiscardBtn">Discard</button>
+        </div>
+      </div>
 
-      <div id="questionList" style="margin-top: 16px;"></div>
+      <!-- Saved bank list -->
+      <div id="qaBankSection">
+        <div id="qaBankHeader">Saved Q&amp;A Bank</div>
+        <div id="qaBankList"></div>
+      </div>
     </div>
 
     <!-- ===== FORM LOGS SECTION ===== -->

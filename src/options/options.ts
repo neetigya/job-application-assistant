@@ -765,74 +765,249 @@ document.getElementById('savePreferencesBtn')?.addEventListener('click', () => {
   });
 });
 
-// ─── Common Questions ─────────────────────────────────────────────────────────
+// ─── Personal Q&A Bank ────────────────────────────────────────────────────────
 
-document.getElementById('saveQuestionBtn')?.addEventListener('click', () => {
-  const question = (document.getElementById('questionText') as HTMLInputElement).value;
-  const answer = (document.getElementById('answerText') as HTMLTextAreaElement).value;
+const QA_BANK_KEY = 'jae_qa_bank';
 
-  if (!question || !answer) {
-    showStatus('questionStatus', 'Please enter both question and answer', 'error');
+interface QABankEntry {
+  id: string;
+  question: string;
+  answer: string;
+  addedAt: number;
+}
+
+interface ParsedPair {
+  question: string;
+  answer: string;
+  similarToId: string | null;
+  similarToQuestion: string | null;
+}
+
+function genQAId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function loadQABank(): Promise<QABankEntry[]> {
+  return new Promise(r => {
+    chrome.storage.local.get([QA_BANK_KEY, 'questions'], result => {
+      let bank: QABankEntry[] = (result[QA_BANK_KEY] as QABankEntry[]) || [];
+      // One-time migration from the old 'questions' key
+      if (bank.length === 0 && (result.questions as Question[] || []).length > 0) {
+        bank = (result.questions as Question[]).map(q => ({
+          id:       q.id || genQAId(),
+          question: q.question || '',
+          answer:   q.answer   || '',
+          addedAt:  parseInt(q.id) || Date.now(),
+        }));
+        chrome.storage.local.set({ [QA_BANK_KEY]: bank });
+      }
+      r(bank);
+    });
+  });
+}
+
+function saveQABankToStorage(bank: QABankEntry[]): Promise<void> {
+  return new Promise(r => chrome.storage.local.set({ [QA_BANK_KEY]: bank }, r));
+}
+
+function renderQABank(bank: QABankEntry[]): void {
+  const list     = document.getElementById('qaBankList')!;
+  const header   = document.getElementById('qaBankHeader')!;
+  header.textContent = bank.length
+    ? `Saved Q&A Bank (${bank.length} ${bank.length === 1 ? 'entry' : 'entries'})`
+    : 'Saved Q&A Bank';
+  list.innerHTML = '';
+
+  if (!bank.length) {
+    list.innerHTML = '<div class="qa-bank-empty">No Q&A pairs saved yet.</div>';
     return;
   }
 
-  chrome.storage.local.get(['questions'], (result: { [key: string]: any }) => {
-    const questions: Question[] = result.questions || [];
-    questions.push({
-      id: Date.now().toString(),
-      question,
-      answer,
+  bank.forEach(entry => {
+    const item = document.createElement('div');
+    item.className = 'qa-bank-item';
+    item.dataset.id = entry.id;
+
+    const preview = entry.answer.length > 160 ? entry.answer.slice(0, 160) + '…' : entry.answer;
+
+    item.innerHTML = `
+      <div class="qa-view">
+        <div class="qa-q">${escapeHTML(entry.question)}</div>
+        <div class="qa-a">${escapeHTML(preview)}</div>
+        <div class="qa-actions">
+          <button class="btn-secondary" style="font-size:12px;padding:5px 12px;" data-action="edit">Edit</button>
+          <button class="btn-secondary" style="font-size:12px;padding:5px 12px;color:#ff6b6b;border-color:#5e2e2e;" data-action="delete">Delete</button>
+        </div>
+      </div>
+      <div class="qa-edit-form">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label>Question</label>
+          <input type="text" class="qa-edit-q" value="${escapeAttr(entry.question)}">
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label>Answer</label>
+          <textarea class="qa-edit-a" style="min-height:90px;">${escapeHTML(entry.answer)}</textarea>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-primary" style="font-size:12px;padding:5px 14px;" data-action="save-edit">Save</button>
+          <button class="btn-secondary" style="font-size:12px;padding:5px 14px;" data-action="cancel-edit">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    item.addEventListener('click', async (e) => {
+      const btn = (e.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const id = item.dataset.id!;
+
+      if (action === 'edit') {
+        item.classList.add('editing');
+        (item.querySelector('.qa-edit-q') as HTMLInputElement).focus();
+
+      } else if (action === 'cancel-edit') {
+        item.classList.remove('editing');
+
+      } else if (action === 'save-edit') {
+        const q = (item.querySelector('.qa-edit-q') as HTMLInputElement).value.trim();
+        const a = (item.querySelector('.qa-edit-a') as HTMLTextAreaElement).value.trim();
+        if (!q || !a) return;
+        const bank = await loadQABank();
+        const idx = bank.findIndex(e => e.id === id);
+        if (idx >= 0) { bank[idx].question = q; bank[idx].answer = a; }
+        await saveQABankToStorage(bank);
+        renderQABank(bank);
+
+      } else if (action === 'delete') {
+        if (!confirm('Delete this Q&A pair?')) return;
+        const bank = await loadQABank();
+        const updated = bank.filter(e => e.id !== id);
+        await saveQABankToStorage(updated);
+        renderQABank(updated);
+      }
     });
 
-    chrome.storage.local.set({ questions }, () => {
-      showStatus('questionStatus', 'Question saved!', 'success');
-      (document.getElementById('questionText') as HTMLInputElement).value = '';
-      (document.getElementById('answerText') as HTMLTextAreaElement).value = '';
-      loadQuestions();
-    });
+    list.appendChild(item);
   });
+}
+
+function renderPreviewPanel(pairs: ParsedPair[]): void {
+  const header    = document.getElementById('qaPreviewHeader')!;
+  const container = document.getElementById('qaPreviewPairs')!;
+  container.innerHTML = '';
+
+  header.textContent = `${pairs.length} Q&A pair${pairs.length !== 1 ? 's' : ''} found — review and edit before saving.`;
+
+  pairs.forEach((pair, idx) => {
+    const card = document.createElement('div');
+    card.className = 'qa-preview-card';
+    card.dataset.idx = String(idx);
+
+    const simHtml = pair.similarToId
+      ? `<div class="qa-sim-warning">
+           ⚠ Similar to existing: "<em>${escapeHTML(pair.similarToQuestion || '')}</em>"
+           <label class="qa-replace-label">
+             <input type="checkbox" class="qa-replace-chk" data-existing-id="${escapeAttr(pair.similarToId)}">
+             Replace existing instead
+           </label>
+         </div>`
+      : '';
+
+    card.innerHTML = `
+      ${simHtml}
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>Question</label>
+        <input type="text" class="qa-preview-q" value="${escapeAttr(pair.question)}">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Answer</label>
+        <textarea class="qa-preview-a" style="min-height:80px;">${escapeHTML(pair.answer)}</textarea>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// ── Parse button ──────────────────────────────────────────────────────────────
+
+document.getElementById('parseQABtn')?.addEventListener('click', async () => {
+  const freeText = (document.getElementById('qaFreeText') as HTMLTextAreaElement).value.trim();
+  if (!freeText) {
+    showStatus('qaParseStatus', 'Please enter some text to parse.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('parseQABtn') as HTMLButtonElement;
+  btn.disabled = true;
+  btn.textContent = 'Parsing…';
+  document.getElementById('qaPreviewPanel')!.style.display = 'none';
+
+  const existingBank = await loadQABank();
+  const existingQA   = existingBank.map(e => ({ id: e.id, question: e.question }));
+
+  chrome.runtime.sendMessage(
+    { action: 'parsePersonalQA', freeText, existingQA },
+    (result: { pairs: ParsedPair[] } | null) => {
+      btn.disabled = false;
+      btn.textContent = 'Parse & Preview';
+
+      if (!result?.pairs?.length) {
+        showStatus('qaParseStatus', 'No Q&A pairs could be extracted. Try adding more context or explicit Q&A.', 'error');
+        return;
+      }
+
+      renderPreviewPanel(result.pairs);
+      document.getElementById('qaPreviewPanel')!.style.display = '';
+    }
+  );
 });
 
-function loadQuestions() {
-  chrome.storage.local.get(['questions'], (result: { [key: string]: any }) => {
-    const questionList = document.getElementById('questionList')!;
-    questionList.innerHTML = '';
+// ── Save All button ───────────────────────────────────────────────────────────
 
-    const questions: Question[] = result.questions || [];
+document.getElementById('qaSaveAllBtn')?.addEventListener('click', async () => {
+  const cards = document.querySelectorAll<HTMLElement>('.qa-preview-card');
+  if (!cards.length) return;
 
-    if (questions.length === 0) {
-      questionList.innerHTML = '<p style="color: #666; font-size:13px;">No questions saved yet.</p>';
-      return;
+  const bank = await loadQABank();
+  let added = 0;
+  let replaced = 0;
+
+  cards.forEach(card => {
+    const q = (card.querySelector('.qa-preview-q') as HTMLInputElement).value.trim();
+    const a = (card.querySelector('.qa-preview-a') as HTMLTextAreaElement).value.trim();
+    if (!q || !a) return;
+
+    const replaceChk  = card.querySelector<HTMLInputElement>('.qa-replace-chk');
+    const shouldReplace = replaceChk?.checked;
+    const existingId  = replaceChk?.dataset.existingId;
+
+    if (shouldReplace && existingId) {
+      const idx = bank.findIndex(e => e.id === existingId);
+      if (idx >= 0) {
+        bank[idx] = { ...bank[idx], question: q, answer: a };
+        replaced++;
+        return;
+      }
     }
 
-    questions.forEach((q) => {
-      const item = document.createElement('div');
-      item.className = 'question-item';
-      item.innerHTML = `
-        <div style="flex:1;">
-          <div class="q-text">${escapeHTML(q.question)}</div>
-          <div class="a-text">${escapeHTML(q.answer.substring(0, 150))}${q.answer.length > 150 ? '...' : ''}</div>
-        </div>
-        <button class="btn-secondary" style="flex-shrink:0;" onclick="deleteQuestion('${q.id}')">Delete</button>
-      `;
-      questionList.appendChild(item);
-    });
+    bank.unshift({ id: genQAId(), question: q, answer: a, addedAt: Date.now() });
+    added++;
   });
-}
 
-function deleteQuestion(id: string) {
-  if (confirm('Delete this question?')) {
-    chrome.storage.local.get(['questions'], (result: { [key: string]: any }) => {
-      const questions = (result.questions || []).filter((q: Question) => q.id !== id);
-      chrome.storage.local.set({ questions }, () => {
-        loadQuestions();
-      });
-    });
-  }
-}
+  await saveQABankToStorage(bank);
+  (document.getElementById('qaFreeText') as HTMLTextAreaElement).value = '';
+  document.getElementById('qaPreviewPanel')!.style.display = 'none';
+  renderQABank(bank);
 
-// Make deleteQuestion accessible from inline onclick
-(window as any).deleteQuestion = deleteQuestion;
+  const msg = [added && `${added} added`, replaced && `${replaced} replaced`].filter(Boolean).join(', ');
+  showStatus('qaParseStatus', `Saved — ${msg}.`, 'success');
+});
+
+// ── Discard button ────────────────────────────────────────────────────────────
+
+document.getElementById('qaDiscardBtn')?.addEventListener('click', () => {
+  document.getElementById('qaPreviewPanel')!.style.display = 'none';
+});
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -1032,7 +1207,7 @@ document.getElementById('clearLogsBtn')?.addEventListener('click', async () => {
 // ─── Page load ────────────────────────────────────────────────────────────────
 
 window.addEventListener('load', () => {
-  loadQuestions();
+  loadQABank().then(renderQABank);
 
   // Load API key
   chrome.storage.local.get(['apiKey'], (result: { [key: string]: any }) => {

@@ -135,6 +135,9 @@ async function generateAnswerForQuestion(
     return { answer: '', questionType: 'unknown', confidence: 0 };
   }
 
+  const qaBank      = await getQABank();
+  const qaBankBlock = formatQABankForPrompt(qaBank);
+
   const isWhyInterested = /why.*(interest|join|work|want|excit)|what.*excit|tell us why|motivated to/i.test(
     fieldLabel + ' ' + fieldHint
   );
@@ -146,7 +149,7 @@ async function generateAnswerForQuestion(
 "${fieldLabel}"
 
 CANDIDATE BACKGROUND:
-${resumeContent}
+${resumeContent}${qaBankBlock}
 
 JOB DESCRIPTION:
 ${jobDescription || '(not provided)'}
@@ -164,7 +167,7 @@ Reply with only the answer text.` + HUMAN_RULES
 "${fieldLabel}"
 
 CANDIDATE BACKGROUND:
-${resumeContent}
+${resumeContent}${qaBankBlock}
 
 JOB DESCRIPTION:
 ${jobDescription || '(not provided)'}
@@ -212,6 +215,9 @@ async function generateCoverLetter(
   const apiKey = await getApiKey();
   if (!apiKey) return '';
 
+  const qaBank      = await getQABank();
+  const qaBankBlock = formatQABankForPrompt(qaBank);
+
   const taskLine = question?.trim()
     ? `Task: ${question.trim()}`
     : 'Write a professional cover letter body for this job application.';
@@ -219,7 +225,7 @@ async function generateCoverLetter(
   const prompt = `${taskLine}
 
 CANDIDATE BACKGROUND:
-${resumeContent}
+${resumeContent}${qaBankBlock}
 
 JOB:
 Title: ${jobTitle || '(not provided)'}
@@ -269,6 +275,80 @@ function cleanGeneratedText(raw: string): string {
     // Remaining em/en dashes → comma
     .replace(/\s*[—–]\s*/g, ', ')
     .trim();
+}
+
+// ── Personal Q&A Bank ─────────────────────────────────────────────────────────
+
+async function getQABank(): Promise<Array<{ id: string; question: string; answer: string }>> {
+  return new Promise(r => chrome.storage.local.get(['jae_qa_bank'], res => r(res.jae_qa_bank || [])));
+}
+
+function formatQABankForPrompt(qaBank: Array<{ question: string; answer: string }>): string {
+  if (!qaBank.length) return '';
+  return '\n\nPERSONAL Q&A REFERENCE — The candidate has previously answered questions like these. ' +
+    'Use them as context and draw on them if the current question is similar:\n' +
+    qaBank.map(q => `Q: ${q.question}\nA: ${q.answer}`).join('\n\n');
+}
+
+async function parsePersonalQA(
+  freeText: string,
+  existingQA: Array<{ id: string; question: string }>
+): Promise<{ pairs: Array<{ question: string; answer: string; similarToId: string | null; similarToQuestion: string | null }> }> {
+  const apiKey = await getApiKey();
+  if (!apiKey) return { pairs: [] };
+
+  const existingBlock = existingQA.length > 0
+    ? `\nEXISTING Q&A (for similarity detection — include the exact ID if similar):\n` +
+      existingQA.map(q => `ID="${q.id}" Q: ${q.question}`).join('\n') + '\n'
+    : '';
+
+  const prompt =
+    `Extract all question-answer pairs from the text below. The text may be informal or stream-of-consciousness.\n` +
+    `\nRules:\n` +
+    `- Rewrite each question as a clean, direct interview question\n` +
+    `- Rewrite each answer in clean first-person prose, preserving the candidate's real content and examples\n` +
+    `- Skip any question that has no associated answer in the text\n` +
+    (existingQA.length > 0
+      ? `- For each pair, check if it is semantically similar to an existing pair above. If so, set similarToId and similarToQuestion.\n`
+      : '') +
+    `${existingBlock}` +
+    `\nReturn ONLY valid JSON, no markdown fences:\n` +
+    `{"pairs":[{"question":"...","answer":"...","similarToId":null,"similarToQuestion":null}]}\n` +
+    `\nTEXT:\n${freeText}`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!response.ok) return { pairs: [] };
+    const data = await response.json();
+    const raw = (data.content[0].text || '').trim()
+      .replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return { pairs: [] };
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      pairs: (parsed.pairs || []).map((p: any) => ({
+        question:          String(p.question || ''),
+        answer:            String(p.answer   || ''),
+        similarToId:       p.similarToId       || null,
+        similarToQuestion: p.similarToQuestion || null,
+      })),
+    };
+  } catch {
+    return { pairs: [] };
+  }
 }
 
 // ── Explain text ─────────────────────────────────────────────────────────────
@@ -395,6 +475,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'formatText') {
     formatText(request.text || '', request.formatType || '').then(sendResponse);
+    return true;
+  }
+
+  if (request.action === 'parsePersonalQA') {
+    parsePersonalQA(request.freeText || '', request.existingQA || []).then(sendResponse);
     return true;
   }
 

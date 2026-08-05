@@ -34,6 +34,13 @@ export interface FormLogEntry {
   };
 }
 
+export interface PersonalQA {
+  id: string;
+  question: string;
+  answer: string;
+  addedAt: number;
+}
+
 export interface Project {
   name: string;
   startDate: string;
