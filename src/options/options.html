@@ -5,406 +5,584 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Job Assistant Settings</title>
   <style>
+    :root {
+      --bg:      #f8f7f6;
+      --surface: #ffffff;
+      --subtle:  #f2f0ee;
+      --border:  #dcd9d6;
+      --text:    #2a2725;
+      --muted:   #7a7673;
+      --accent:  #4f46e5;
+      --danger:  #c1442a;
+      --success: #3f9142;
+      --shadow-sm: 0 1px 3px rgb(20 20 20 / 0.08);
+      --shadow:    0 8px 24px rgb(20 20 20 / 0.08);
+      --radius-sm: 6px;
+      --radius:    9px;
+      --radius-lg: 14px;
+    }
+
+    html[data-theme="dark"] {
+      --bg:      #19181f;
+      --surface: #232129;
+      --subtle:  #2b2933;
+      --border:  #37343f;
+      --text:    #eae9ec;
+      --muted:   #a4a1ab;
+      --accent:  #8b83f0;
+      --danger:  #e07060;
+      --success: #6abf6e;
+      --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.25);
+      --shadow:    0 8px 24px rgb(0 0 0 / 0.45);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #121212;
-      color: #e0e0e0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
       display: flex;
       min-height: 100vh;
+      font-size: 14px;
     }
 
-    /* Sidebar */
-    .sidebar {
-      width: 220px;
-      background: #1a1a1a;
-      border-right: 1px solid #2a2a2a;
+    /* ── Left Nav ─────────────────────────────────────────── */
+    .nav-sidebar {
+      width: 180px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
       padding: 24px 0;
       position: fixed;
       top: 0;
       left: 0;
       height: 100vh;
       overflow-y: auto;
+      flex-shrink: 0;
     }
 
-    .sidebar-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: #888;
+    .nav-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      padding: 0 20px 16px;
+      padding: 0 14px 14px;
     }
 
     .nav-item {
       display: block;
-      padding: 10px 20px;
-      color: #aaa;
+      width: 100%;
+      padding: 10px 14px;
+      color: var(--text);
       text-decoration: none;
-      font-size: 14px;
+      font-size: 13px;
+      font-family: inherit;
       cursor: pointer;
-      border-left: 3px solid transparent;
-      transition: all 0.15s;
+      border: none;
+      background: none;
+      border-radius: var(--radius-sm);
+      text-align: left;
+      margin: 1px 6px;
+      width: calc(100% - 12px);
+      transition: background 0.12s, color 0.12s;
     }
+    .nav-item:hover:not(.active) { background: var(--subtle); }
+    .nav-item.active { background: var(--accent); color: #fff; font-weight: 600; }
 
-    .nav-item:hover { color: #fff; background: #222; }
-    .nav-item.active { color: #4a9eff; border-left-color: #4a9eff; background: #1e2a3a; }
-
-    /* Main content */
+    /* ── Main content ─────────────────────────────────────── */
     .main {
-      margin-left: 220px;
+      margin-left: 180px;
       flex: 1;
       padding: 32px 40px;
       max-width: 860px;
     }
 
-    .page-title {
-      font-size: 22px;
-      font-weight: 600;
-      color: #fff;
-      margin-bottom: 28px;
-    }
+    /* ── Section switching ────────────────────────────────── */
+    .settings-section { display: none; }
+    .settings-section.active { display: block; }
 
-    /* Cards */
-    .card {
-      background: #1e1e1e;
-      border: 1px solid #2a2a2a;
-      border-radius: 10px;
-      padding: 24px;
+    /* ── Page title ───────────────────────────────────────── */
+    .page-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
       margin-bottom: 24px;
     }
 
+    /* ── Cards ────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      background: rgba(79,70,229,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
     .card-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: #fff;
-      margin-bottom: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
     }
 
     .card-desc {
-      font-size: 13px;
-      color: #888;
-      margin-bottom: 20px;
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height: 1.5;
     }
 
-    /* Generic inputs (for API key, preferences, questions — unchanged look) */
+    /* ── Form elements ────────────────────────────────────── */
+    .form-row { display: flex; gap: 14px; margin-bottom: 14px; }
+    .form-row .form-group { flex: 1; }
+    .form-group { margin-bottom: 14px; }
+
+    .form-group label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 5px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea,
     input[type="text"]:not(.form-group input),
+    input[type="url"]:not(.form-group input),
     select:not(.form-group select) {
       width: 100%;
-      padding: 10px 12px;
-      background: #2a2a2a;
-      border: 1px solid #444;
-      border-radius: 6px;
-      color: #fff;
-      font-size: 14px;
-      margin-bottom: 12px;
+      padding: 8px 10px;
+      background: var(--subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
     }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: var(--surface);
+    }
+
+    .form-group textarea { resize: vertical; min-height: 80px; }
 
     textarea:not(.form-group textarea) {
       width: 100%;
-      padding: 10px 12px;
-      background: #2a2a2a;
-      border: 1px solid #444;
-      border-radius: 6px;
-      color: #fff;
-      font-size: 14px;
-      margin-bottom: 12px;
+      padding: 8px 10px;
+      background: var(--subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
       min-height: 100px;
       resize: vertical;
+      margin-bottom: 10px;
     }
 
-    label:not(.form-group label):not(.checkbox-row label) {
+    label:not(.form-group label):not(.checkbox-row label):not(.btn-secondary) {
       display: block;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 5px;
+      font-family: inherit;
+    }
+
+    /* ── Buttons ──────────────────────────────────────────── */
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
       font-size: 13px;
       font-weight: 500;
-      color: #ccc;
-      margin-bottom: 6px;
-    }
-
-    /* Buttons */
-    button {
-      padding: 9px 18px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
+      font-family: inherit;
+      transition: filter 0.15s, background 0.15s;
     }
 
     .btn-primary {
-      background: #4a9eff;
+      background: var(--accent);
       color: #fff;
     }
-
-    .btn-primary:hover { background: #3a8ef0; }
+    .btn-primary:hover { filter: brightness(1.08); }
 
     .btn-secondary {
-      background: #2a2a2a;
-      color: #ccc;
-      border: 1px solid #444;
+      background: var(--subtle);
+      color: var(--text);
+      border: 1px solid var(--border);
     }
+    .btn-secondary:hover { background: var(--surface); }
 
-    .btn-secondary:hover { background: #333; }
+    .btn-danger {
+      background: rgba(193,68,42,0.08);
+      color: var(--danger);
+      border: 1px solid rgba(193,68,42,0.25);
+    }
+    .btn-danger:hover { background: rgba(193,68,42,0.14); }
 
-    /* Status messages */
+    /* ── Status messages ──────────────────────────────────── */
     .status {
-      padding: 10px 14px;
-      border-radius: 6px;
-      margin-top: 12px;
-      font-size: 13px;
+      padding: 9px 13px;
+      border-radius: var(--radius-sm);
+      margin-top: 10px;
+      font-size: 12.5px;
       display: none;
     }
-
     .status.success {
-      background: #1a3a1a;
-      color: #4caf50;
-      border: 1px solid #2e5e2e;
+      background: rgba(63,145,66,0.1);
+      color: var(--success);
+      border: 1px solid rgba(63,145,66,0.25);
       display: block;
     }
-
     .status.error {
-      background: #3a1a1a;
-      color: #ff6b6b;
-      border: 1px solid #5e2e2e;
+      background: rgba(193,68,42,0.08);
+      color: var(--danger);
+      border: 1px solid rgba(193,68,42,0.25);
       display: block;
     }
 
     .help-text {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 3px;
+      margin-bottom: 10px;
+    }
+
+    /* ── Resume sub-tabs ──────────────────────────────────── */
+    .subtab-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .subtab-btn {
+      padding: 5px 12px;
+      border-radius: 999px;
       font-size: 12px;
-      color: #666;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--subtle);
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
+    }
+    .subtab-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+    .subtab-btn:hover:not(.active) { background: var(--surface); border-color: var(--accent); }
+
+    .resume-subtab { display: none; }
+    .resume-subtab.active { display: block; }
+
+    /* ── Section divider ──────────────────────────────────── */
+    .section-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+    /* ── Entry cards (job/edu/project) ────────────────────── */
+    .job-entry, .education-entry, .project-entry {
+      background: var(--subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+      position: relative;
+    }
+
+    .entry-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .entry-header h4 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .btn-remove {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 3px 9px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .btn-remove:hover { border-color: var(--danger); color: var(--danger); }
+
+    .btn-add {
+      background: none;
+      border: 1px dashed var(--accent);
+      color: var(--accent);
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      width: 100%;
+      font-size: 13px;
+      font-family: inherit;
       margin-top: 4px;
+      transition: background 0.12s;
+    }
+    .btn-add:hover { background: rgba(79,70,229,0.06); }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .checkbox-row input[type=checkbox] { width: auto; accent-color: var(--accent); }
+    .checkbox-row label { margin: 0; font-size: 13px; color: var(--text); }
+
+    .radio-group { display: flex; gap: 20px; margin-top: 5px; }
+    .radio-label { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 13px; cursor: pointer; }
+    .radio-label input[type=radio] { width: auto; accent-color: var(--accent); }
+
+    .field-error { color: var(--danger); font-size: 12px; margin-top: 3px; display: none; }
+    .field-error.visible { display: block; }
+
+    /* ── Section title within card ────────────────────────── */
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
       margin-bottom: 12px;
     }
 
-    /* Question list */
-    .question-item {
-      background: #252525;
-      border: 1px solid #333;
-      border-radius: 6px;
-      padding: 14px;
-      margin-bottom: 10px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-
-    .question-item .q-text { font-size: 14px; color: #ddd; font-weight: 500; margin-bottom: 4px; }
-    .question-item .a-text { font-size: 12px; color: #888; }
+    /* ── Compliance details ───────────────────────────────── */
+    .compliance-note { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; line-height: 1.5; }
 
     /* ── Q&A Bank ─────────────────────────────────────────── */
     .qa-preview-card {
-      background: #252525;
-      border: 1px solid #3a3a3a;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
+      background: var(--subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      margin-bottom: 10px;
     }
     .qa-sim-warning {
-      background: #26200a;
-      border: 1px solid #5a4800;
-      border-radius: 5px;
-      padding: 8px 12px;
-      margin-bottom: 12px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 4px;
+      padding: 7px 10px;
+      margin-bottom: 10px;
       font-size: 12px;
-      color: #c8a020;
+      color: #92400e;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       flex-wrap: wrap;
     }
     .qa-replace-label {
       display: flex;
       align-items: center;
       gap: 5px;
-      color: #aaa;
+      color: var(--muted);
       cursor: pointer;
       margin: 0;
       font-size: 12px;
     }
-    .qa-replace-label input[type=checkbox] { width: auto; accent-color: #4a9eff; }
+    .qa-replace-label input[type=checkbox] { width: auto; accent-color: var(--accent); }
     .qa-bank-item {
-      background: #252525;
-      border: 1px solid #333;
-      border-radius: 8px;
-      padding: 14px 16px;
-      margin-bottom: 10px;
+      background: var(--subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      margin-bottom: 8px;
     }
-    .qa-bank-item .qa-q { font-size: 13px; font-weight: 600; color: #ddd; margin-bottom: 4px; }
-    .qa-bank-item .qa-a { font-size: 12px; color: #888; white-space: pre-wrap; }
-    .qa-bank-item .qa-actions { margin-top: 10px; display: flex; gap: 8px; }
+    .qa-bank-item .qa-q { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+    .qa-bank-item .qa-a { font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+    .qa-bank-item .qa-actions { margin-top: 8px; display: flex; gap: 6px; }
     .qa-bank-item .qa-view { }
     .qa-bank-item.editing .qa-view { display: none; }
     .qa-bank-item .qa-edit-form { display: none; }
     .qa-bank-item.editing .qa-edit-form { display: block; }
-    .qa-bank-empty { color: #666; font-size: 13px; padding: 8px 0; }
-    #qaPreviewPanel { display: none; margin-top: 20px; padding-top: 16px; border-top: 1px solid #333; }
-    #qaBankSection { margin-top: 24px; padding-top: 20px; border-top: 1px solid #333; }
-    #qaBankHeader { font-size: 13px; font-weight: 600; color: #aaa; margin-bottom: 12px; }
+    .qa-bank-empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+    #qaPreviewPanel { display: none; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+    #qaBankSection { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+    #qaBankHeader { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
 
-    /* ===== NEW RESUME FORM STYLES ===== */
-    .form-row { display: flex; gap: 16px; margin-bottom: 16px; }
-    .form-row .form-group { flex: 1; }
-    .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; font-size: 13px; font-weight: 500; color: #ccc; margin-bottom: 6px; }
-    .form-group input, .form-group select, .form-group textarea {
-      width: 100%;
-      padding: 8px 12px;
-      background: #2a2a2a;
-      border: 1px solid #444;
-      border-radius: 6px;
-      color: #fff;
-      font-size: 14px;
-      box-sizing: border-box;
-    }
-    .form-group textarea { resize: vertical; min-height: 80px; }
-    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-      outline: none;
-      border-color: #4a9eff;
-    }
-    .field-error { color: #ff6b6b; font-size: 12px; margin-top: 4px; display: none; }
-    .field-error.visible { display: block; }
-    .job-entry, .education-entry, .project-entry {
-      background: #1e1e1e;
-      border: 1px solid #333;
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 16px;
-      position: relative;
-    }
-    .entry-header {
+    /* ── Resume actions footer ────────────────────────────── */
+    .resume-actions {
       display: flex;
-      justify-content: space-between;
+      gap: 8px;
       align-items: center;
-      margin-bottom: 16px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
     }
-    .entry-header h4 { margin: 0; color: #ccc; font-size: 14px; }
-    .btn-remove {
-      background: none;
-      border: 1px solid #555;
-      color: #aaa;
-      padding: 4px 10px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-    }
-    .btn-remove:hover { border-color: #ff6b6b; color: #ff6b6b; }
-    .btn-add {
-      background: none;
-      border: 1px dashed #4a9eff;
-      color: #4a9eff;
-      padding: 8px 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      width: 100%;
-      font-size: 14px;
-      margin-top: 8px;
-    }
-    .btn-add:hover { background: rgba(74,158,255,0.1); }
-    .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-    .checkbox-row input[type=checkbox] { width: auto; }
-    .checkbox-row label { margin: 0; font-size: 13px; color: #aaa; }
-    .section-divider { border: none; border-top: 1px solid #333; margin: 24px 0; }
-    .radio-group { display: flex; gap: 24px; margin-top: 6px; }
-    .radio-label { display: flex; align-items: center; gap: 6px; color: #ccc; font-size: 14px; cursor: pointer; }
-    .radio-label input[type=radio] { width: auto; accent-color: #4a9eff; }
-    .compliance-details { border: 1px solid #2a2a2a; border-radius: 8px; overflow: hidden; }
-    .compliance-details > summary {
-      padding: 14px 18px; font-size: 14px; font-weight: 600; color: #e0e0e0;
-      cursor: pointer; list-style: none; user-select: none;
-      display: flex; align-items: center;
-    }
-    .compliance-details > summary::-webkit-details-marker { display: none; }
-    .compliance-details > summary::after { content: '▶'; font-size: 11px; margin-left: auto; color: #666; transition: transform 0.2s; }
-    .compliance-details[open] > summary::after { transform: rotate(90deg); }
-    .compliance-details[open] > summary { border-bottom: 1px solid #2a2a2a; }
-    .compliance-body { padding: 20px; }
-    .compliance-note { color: #888; font-size: 13px; margin-bottom: 16px; }
   </style>
 </head>
 <body>
 
-  <!-- Sidebar Navigation -->
-  <nav class="sidebar">
-    <div class="sidebar-title">Settings</div>
-    <a class="nav-item active" href="#resume">Resume</a>
-    <a class="nav-item" href="#projects">Projects</a>
-    <a class="nav-item" href="#api-key">API Key</a>
-    <a class="nav-item" href="#preferences">Preferences</a>
-    <a class="nav-item" href="#questions">Q&amp;A Bank</a>
-    <a class="nav-item" href="#form-logs">Form Logs</a>
+  <!-- Left Navigation -->
+  <nav class="nav-sidebar">
+    <div class="nav-title">Settings</div>
+    <button class="nav-item active" data-section="resume">Resume</button>
+    <button class="nav-item" data-section="projects">Projects</button>
+    <button class="nav-item" data-section="api-key">API Key</button>
+    <button class="nav-item" data-section="preferences">Preferences</button>
+    <button class="nav-item" data-section="questions">Q&amp;A Bank</button>
+    <button class="nav-item" data-section="form-logs">Form Logs</button>
   </nav>
 
   <div class="main">
-    <h1 class="page-title">Job Application Assistant</h1>
 
     <!-- ===== RESUME SECTION ===== -->
-    <div class="card" id="resume">
-      <div class="card-title">Your Resume</div>
-      <div class="card-desc">Fill in your resume details. This information will be used to match you with job postings and auto-fill applications.</div>
+    <div class="settings-section active" id="section-resume">
+      <h1 class="page-title">Resume</h1>
 
-      <!-- Personal Info -->
-      <div class="card-title" style="font-size:14px; margin-bottom:14px;">Personal Information</div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="firstName">First Name *</label>
-          <input type="text" id="firstName" placeholder="Jane">
-          <span class="field-error" id="err-firstName">First name is required.</span>
+      <!-- Card 1: Parse -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </div>
+          <div>
+            <div class="card-title">1 · Parse into form fields</div>
+            <div class="card-desc">Upload a PDF once and Claude reads it into the fields below. One-time setup — this copy isn't used again after parsing.</div>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="lastName">Last Name *</label>
-          <input type="text" id="lastName" placeholder="Smith">
-          <span class="field-error" id="err-lastName">Last name is required.</span>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
+          <label class="btn-secondary" style="cursor:pointer; margin:0; padding:7px 14px;">
+            Choose PDF
+            <input type="file" id="resumePdfInput" accept=".pdf" style="display:none;">
+          </label>
+          <span id="resumePdfName" style="color:var(--muted); font-size:13px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">No file chosen</span>
+          <button class="btn-primary" id="parseResumeBtn" disabled style="margin:0;">Parse &amp; fill fields</button>
         </div>
+        <div id="resumeParseStatus" class="status"></div>
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label for="email">Email *</label>
-          <input type="text" id="email" placeholder="jane@example.com">
-          <span class="field-error" id="err-email">Email is required.</span>
+      <!-- Card 2: Store PDF -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </div>
+          <div>
+            <div class="card-title">2 · Attach to file-upload fields</div>
+            <div class="card-desc">A separate copy, saved so it can be silently attached to a form's own "Upload resume" file input every time you use Fill Application. Not parsed — just attached.</div>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="phone">Phone *</label>
-          <input type="text" id="phone" placeholder="+1 555-000-0000">
-          <span class="field-error" id="err-phone">Phone is required.</span>
+        <div id="pdfStoreStatusArea" style="margin-bottom:10px;"></div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label class="btn-secondary" style="cursor:pointer; margin:0; padding:7px 14px; font-size:13px;">
+            Upload PDF
+            <input type="file" id="pdfStoreInput" accept=".pdf" style="display:none;">
+          </label>
+          <button class="btn-danger" id="pdfStoreRemoveBtn" style="display:none; font-size:13px; padding:6px 12px;">Remove</button>
         </div>
+        <div id="pdfStoreStatus" class="status" style="margin-top:8px;"></div>
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label for="city">City *</label>
-          <input type="text" id="city" placeholder="Austin">
-          <span class="field-error" id="err-city">City is required.</span>
-        </div>
-        <div class="form-group">
-          <label for="state">State *</label>
-          <input type="text" id="state" placeholder="TX">
-          <span class="field-error" id="err-state">State is required.</span>
-        </div>
-        <div class="form-group">
-          <label for="country">Country</label>
-          <input type="text" id="country" placeholder="United States" value="United States">
-        </div>
+      <!-- Sub-tab bar -->
+      <div class="subtab-bar">
+        <button class="subtab-btn active" data-subtab="personal">Personal &amp; Relocation</button>
+        <button class="subtab-btn" data-subtab="work">Work History</button>
+        <button class="subtab-btn" data-subtab="edu">Education</button>
+        <button class="subtab-btn" data-subtab="skills">Skills</button>
+        <button class="subtab-btn" data-subtab="summary">Profile Summary</button>
+        <button class="subtab-btn" data-subtab="online">Online Presence</button>
+        <button class="subtab-btn" data-subtab="compliance">Compliance (EEO)</button>
+        <button class="subtab-btn" data-subtab="common">Common Questions</button>
       </div>
 
-      <div class="checkbox-row">
-        <input type="checkbox" id="hasPreferredName">
-        <label for="hasPreferredName">I have a preferred name</label>
-      </div>
+      <!-- Sub-tab: Personal & Relocation -->
+      <div class="resume-subtab active" id="subtab-personal">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name *</label>
+            <input type="text" id="firstName" placeholder="Jane">
+            <span class="field-error" id="err-firstName">First name is required.</span>
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name *</label>
+            <input type="text" id="lastName" placeholder="Smith">
+            <span class="field-error" id="err-lastName">Last name is required.</span>
+          </div>
+        </div>
 
-      <div class="form-group" id="preferredNameGroup" style="display:none;">
-        <label for="preferredName">Preferred Name</label>
-        <input type="text" id="preferredName" placeholder="e.g. Jay">
-      </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="email">Email *</label>
+            <input type="text" id="email" placeholder="jane@example.com">
+            <span class="field-error" id="err-email">Email is required.</span>
+          </div>
+          <div class="form-group">
+            <label for="phone">Phone *</label>
+            <input type="text" id="phone" placeholder="+1 555-000-0000">
+            <span class="field-error" id="err-phone">Phone is required.</span>
+          </div>
+        </div>
 
-      <hr class="section-divider">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="city">City *</label>
+            <input type="text" id="city" placeholder="Austin">
+            <span class="field-error" id="err-city">City is required.</span>
+          </div>
+          <div class="form-group">
+            <label for="state">State *</label>
+            <input type="text" id="state" placeholder="TX">
+            <span class="field-error" id="err-state">State is required.</span>
+          </div>
+          <div class="form-group">
+            <label for="country">Country</label>
+            <input type="text" id="country" placeholder="United States" value="United States">
+          </div>
+        </div>
 
-      <!-- Relocation & Commute -->
-      <div class="section-card" id="relocation-section">
-        <h3 class="section-title">Relocation &amp; Commute</h3>
+        <div class="checkbox-row">
+          <input type="checkbox" id="hasPreferredName">
+          <label for="hasPreferredName">I have a preferred name</label>
+        </div>
+        <div class="form-group" id="preferredNameGroup" style="display:none;">
+          <label for="preferredName">Preferred Name</label>
+          <input type="text" id="preferredName" placeholder="e.g. Jay">
+        </div>
+
+        <hr class="section-divider">
+        <div class="section-title">Relocation &amp; Employment</div>
 
         <div class="form-group">
           <label>Are you willing to relocate? *</label>
@@ -431,237 +609,196 @@
             <label class="radio-label"><input type="radio" name="currentlyEmployed" value="no"> No</label>
           </div>
         </div>
-
       </div>
 
-      <hr class="section-divider">
-
-      <!-- Work History -->
-      <div class="card-title" style="font-size:14px; margin-bottom:14px;">Work History</div>
-      <div id="jobEntriesContainer"></div>
-      <button class="btn-add" id="addJobBtn">+ Add Another Job</button>
-
-      <hr class="section-divider">
-
-      <!-- Education -->
-      <div class="card-title" style="font-size:14px; margin-bottom:14px;">Education</div>
-      <div id="educationEntriesContainer"></div>
-      <button class="btn-add" id="addEducationBtn">+ Add Another Education</button>
-
-      <hr class="section-divider">
-
-      <!-- Projects -->
-      <div class="card-title" style="font-size:14px; margin-bottom:14px;" id="projects">Projects</div>
-      <div id="projectEntriesContainer"></div>
-      <button class="btn-add" id="addProjectBtn">+ Add Another Project</button>
-
-      <hr class="section-divider">
-
-      <!-- Skills -->
-      <div class="card-title" style="font-size:14px; margin-bottom:14px;">Skills</div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="skillsBackend">Backend</label>
-          <textarea id="skillsBackend" placeholder="Node.js, Python, Go, Java..."></textarea>
-        </div>
-        <div class="form-group">
-          <label for="skillsFrontend">Frontend</label>
-          <textarea id="skillsFrontend" placeholder="React, Vue, TypeScript, CSS..."></textarea>
-        </div>
+      <!-- Sub-tab: Work History -->
+      <div class="resume-subtab" id="subtab-work">
+        <div id="jobEntriesContainer"></div>
+        <button class="btn-add" id="addJobBtn">+ Add Another Job</button>
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label for="skillsDatabases">Databases</label>
-          <textarea id="skillsDatabases" placeholder="PostgreSQL, MongoDB, Redis..."></textarea>
+      <!-- Sub-tab: Education -->
+      <div class="resume-subtab" id="subtab-edu">
+        <div id="educationEntriesContainer"></div>
+        <button class="btn-add" id="addEducationBtn">+ Add Another Education</button>
+      </div>
+
+      <!-- Sub-tab: Skills -->
+      <div class="resume-subtab" id="subtab-skills">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="skillsBackend">Backend</label>
+            <textarea id="skillsBackend" placeholder="Node.js, Python, Go, Java..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="skillsFrontend">Frontend</label>
+            <textarea id="skillsFrontend" placeholder="React, Vue, TypeScript, CSS..."></textarea>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="skillsDatabases">Databases</label>
+            <textarea id="skillsDatabases" placeholder="PostgreSQL, MongoDB, Redis..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="skillsDevops">DevOps / Infrastructure</label>
+            <textarea id="skillsDevops" placeholder="Docker, Kubernetes, AWS, CI/CD..."></textarea>
+          </div>
         </div>
         <div class="form-group">
-          <label for="skillsDevops">DevOps / Infrastructure</label>
-          <textarea id="skillsDevops" placeholder="Docker, Kubernetes, AWS, CI/CD..."></textarea>
+          <label for="skillsOther">Other</label>
+          <textarea id="skillsOther" placeholder="Git, Agile, REST APIs..."></textarea>
         </div>
       </div>
 
-      <div class="form-group">
-        <label for="skillsOther">Other</label>
-        <textarea id="skillsOther" placeholder="Git, Agile, REST APIs..."></textarea>
-      </div>
-
-      <hr class="section-divider">
-
-      <!-- Profile Summary -->
-      <div class="section-card" id="profile-summary-section">
-        <h3 class="section-title">Profile Summary</h3>
+      <!-- Sub-tab: Profile Summary -->
+      <div class="resume-subtab" id="subtab-summary">
         <div class="form-group">
           <label for="profileSummary">Professional Summary (Optional)</label>
-          <textarea id="profileSummary" placeholder="Senior engineer with 10+ years building scalable SaaS platforms..." style="min-height:100px;"></textarea>
+          <textarea id="profileSummary" placeholder="Senior engineer with 10+ years building scalable SaaS platforms..." style="min-height:120px;"></textarea>
         </div>
       </div>
 
-      <hr class="section-divider">
-
-      <!-- Online Presence -->
-      <div class="section-card" id="online-presence-section">
-        <h3 class="section-title">Online Presence</h3>
+      <!-- Sub-tab: Online Presence -->
+      <div class="resume-subtab" id="subtab-online">
         <div class="form-group">
-          <label for="portfolioUrl">Portfolio URL</label>
-          <input type="url" id="portfolioUrl" placeholder="https://yourportfolio.com">
+          <label for="linkedinUrl">LinkedIn Profile</label>
+          <input type="url" id="linkedinUrl" placeholder="https://linkedin.com/in/yourname">
         </div>
         <div class="form-group">
           <label for="githubUrl">GitHub Profile</label>
           <input type="url" id="githubUrl" placeholder="https://github.com/yourname">
         </div>
         <div class="form-group">
-          <label for="linkedinUrl">LinkedIn Profile</label>
-          <input type="url" id="linkedinUrl" placeholder="https://linkedin.com/in/yourname">
+          <label for="portfolioUrl">Portfolio URL</label>
+          <input type="url" id="portfolioUrl" placeholder="https://yourportfolio.com">
         </div>
       </div>
 
-      <hr class="section-divider">
+      <!-- Sub-tab: Compliance (EEO) -->
+      <div class="resume-subtab" id="subtab-compliance">
+        <p class="compliance-note">Answered once, auto-filled on every job application. All fields are legally protected voluntary self-identification — except Work Authorization which is required by law to answer.</p>
 
-      <!-- Legal & Compliance (EEO / Voluntary Self-ID) -->
-      <div class="section-card" id="compliance-section">
-        <details class="compliance-details" id="complianceDetails">
-          <summary>⚖️ Legal &amp; Compliance <span style="font-size:12px;font-weight:normal;color:#888;margin-left:6px;">(EEO / Voluntary Self-ID)</span></summary>
-          <div class="compliance-body">
-            <p class="compliance-note">Answered once, auto-filled on every job application. All fields are legally protected voluntary self-identification — except Work Authorization which is required by law to answer.</p>
-
-            <!-- Work Authorization -->
-            <h3 class="section-title" style="margin-top:4px;">Work Authorization</h3>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="comp_isAuthorized">Are you legally authorized to work in the US? *</label>
-                <select id="comp_isAuthorized">
-                  <option value="">-- Select --</option>
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
-                <span class="field-error" id="err-comp_isAuthorized">Please select an option.</span>
-              </div>
-              <div class="form-group">
-                <label for="comp_requiresSponsorshipNow">Do you currently require visa sponsorship? *</label>
-                <select id="comp_requiresSponsorshipNow">
-                  <option value="">-- Select --</option>
-                  <option value="false">No, I don't need sponsorship now</option>
-                  <option value="true">Yes, I currently need sponsorship</option>
-                </select>
-                <span class="field-error" id="err-comp_requiresSponsorshipNow">Please select an option.</span>
-              </div>
-            </div>
-            <div class="form-group">
-              <label for="comp_requiresSponsorshipFuture">Will you require sponsorship in the future?</label>
-              <select id="comp_requiresSponsorshipFuture">
-                <option value="">-- Select / Unsure --</option>
-                <option value="false">No, I won't need it in the future</option>
-                <option value="true">Yes, I will need sponsorship in the future</option>
-              </select>
-            </div>
-
-            <hr class="section-divider">
-
-            <!-- Veteran Status -->
-            <h3 class="section-title">Veteran Status <span style="font-size:12px;font-weight:normal;color:#888;">(VEVRAA)</span></h3>
-            <div class="form-group">
-              <label for="comp_veteranStatus">What is your veteran status?</label>
-              <select id="comp_veteranStatus">
-                <option value="">-- Select --</option>
-                <option value="not_a_veteran">I am not a protected veteran</option>
-                <option value="protected_veteran">I am a protected veteran (general — covers all sub-types)</option>
-                <option value="disabled_veteran">Disabled Veteran</option>
-                <option value="recently_separated_veteran">Recently Separated Veteran (discharged within last 3 years)</option>
-                <option value="active_duty_wartime_veteran">Active Duty Wartime / Campaign Badge Veteran</option>
-                <option value="armed_forces_medal_veteran">Armed Forces Service Medal Veteran</option>
-                <option value="prefer_not_to_say">I prefer not to say</option>
-              </select>
-            </div>
-
-            <hr class="section-divider">
-
-            <!-- Disability Status -->
-            <h3 class="section-title">Disability Status <span style="font-size:12px;font-weight:normal;color:#888;">(Section 503)</span></h3>
-            <div class="form-group">
-              <label for="comp_disabilityStatus">What is your disability status?</label>
-              <select id="comp_disabilityStatus">
-                <option value="">-- Select --</option>
-                <option value="no_disability">No, I do not have a disability (and have not had one in the past)</option>
-                <option value="yes_have_disability">Yes, I have a disability (or have had one in the past)</option>
-                <option value="prefer_not_to_say">I prefer not to say</option>
-              </select>
-            </div>
-
-            <hr class="section-divider">
-
-            <!-- Gender Identity -->
-            <h3 class="section-title">Gender Identity</h3>
-            <div class="form-group">
-              <label for="comp_genderIdentity">How do you identify your gender?</label>
-              <select id="comp_genderIdentity">
-                <option value="">-- Select --</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="non_binary">Non-Binary</option>
-                <option value="prefer_not_to_say">Prefer not to say / Decline to identify</option>
-                <option value="self_describe">Self-describe →</option>
-              </select>
-            </div>
-            <div class="form-group" id="comp_genderSelfDescribeLabel" style="display:none;">
-              <label for="comp_genderSelfDescribe">Describe your gender identity:</label>
-              <input type="text" id="comp_genderSelfDescribe" placeholder="e.g., Genderqueer, Agender...">
-            </div>
-
-            <hr class="section-divider">
-
-            <!-- Race / Ethnicity -->
-            <h3 class="section-title">Race / Ethnicity <span style="font-size:12px;font-weight:normal;color:#888;">(EEO-1)</span></h3>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="comp_isHispanicLatino">Are you Hispanic or Latino?</label>
-                <select id="comp_isHispanicLatino">
-                  <option value="">-- Select --</option>
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                  <option value="prefer_not_to_say">Prefer not to say</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="comp_raceEthnicity">What is your race/ethnicity?</label>
-                <select id="comp_raceEthnicity">
-                  <option value="">-- Select --</option>
-                  <option value="american_indian_alaskan_native">American Indian or Alaskan Native</option>
-                  <option value="asian">Asian</option>
-                  <option value="black_african_american">Black or African American</option>
-                  <option value="hispanic_latino">Hispanic or Latino</option>
-                  <option value="white">White</option>
-                  <option value="native_hawaiian_pacific_islander">Native Hawaiian or Other Pacific Islander</option>
-                  <option value="two_or_more_races">Two or More Races</option>
-                  <option value="prefer_not_to_say">I prefer not to answer</option>
-                </select>
-              </div>
-            </div>
-
-            <hr class="section-divider">
-
-            <!-- LGBTQ+ (truly optional) -->
-            <h3 class="section-title">Sexual Orientation <span style="font-size:12px;font-weight:normal;color:#888;">(Truly optional — some companies ask voluntarily)</span></h3>
-            <div class="form-group">
-              <label for="comp_lgbtqIdentity">Sexual orientation <small style="color:#888;">(leave blank to skip on all applications)</small></label>
-              <select id="comp_lgbtqIdentity">
-                <option value="">Leave blank (skip on all applications)</option>
-                <option value="heterosexual">Heterosexual / Straight</option>
-                <option value="gay_lesbian">Gay or Lesbian</option>
-                <option value="bisexual">Bisexual</option>
-                <option value="prefer_not_to_say">Prefer not to say</option>
-              </select>
-            </div>
+        <div class="section-title">Work Authorization</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="comp_isAuthorized">Are you legally authorized to work in the US? *</label>
+            <select id="comp_isAuthorized">
+              <option value="">-- Select --</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+            <span class="field-error" id="err-comp_isAuthorized">Please select an option.</span>
           </div>
-        </details>
+          <div class="form-group">
+            <label for="comp_requiresSponsorshipNow">Do you currently require visa sponsorship? *</label>
+            <select id="comp_requiresSponsorshipNow">
+              <option value="">-- Select --</option>
+              <option value="false">No, I don't need sponsorship now</option>
+              <option value="true">Yes, I currently need sponsorship</option>
+            </select>
+            <span class="field-error" id="err-comp_requiresSponsorshipNow">Please select an option.</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="comp_requiresSponsorshipFuture">Will you require sponsorship in the future?</label>
+          <select id="comp_requiresSponsorshipFuture">
+            <option value="">-- Select / Unsure --</option>
+            <option value="false">No, I won't need it in the future</option>
+            <option value="true">Yes, I will need sponsorship in the future</option>
+          </select>
+        </div>
+
+        <hr class="section-divider">
+        <div class="section-title">Veteran Status <span style="font-size:12px;font-weight:normal;color:var(--muted);">(VEVRAA)</span></div>
+        <div class="form-group">
+          <label for="comp_veteranStatus">What is your veteran status?</label>
+          <select id="comp_veteranStatus">
+            <option value="">-- Select --</option>
+            <option value="not_a_veteran">I am not a protected veteran</option>
+            <option value="protected_veteran">I am a protected veteran (general)</option>
+            <option value="disabled_veteran">Disabled Veteran</option>
+            <option value="recently_separated_veteran">Recently Separated Veteran</option>
+            <option value="active_duty_wartime_veteran">Active Duty Wartime / Campaign Badge Veteran</option>
+            <option value="armed_forces_medal_veteran">Armed Forces Service Medal Veteran</option>
+            <option value="prefer_not_to_say">I prefer not to say</option>
+          </select>
+        </div>
+
+        <hr class="section-divider">
+        <div class="section-title">Disability Status <span style="font-size:12px;font-weight:normal;color:var(--muted);">(Section 503)</span></div>
+        <div class="form-group">
+          <label for="comp_disabilityStatus">What is your disability status?</label>
+          <select id="comp_disabilityStatus">
+            <option value="">-- Select --</option>
+            <option value="no_disability">No, I do not have a disability</option>
+            <option value="yes_have_disability">Yes, I have a disability (or have had one in the past)</option>
+            <option value="prefer_not_to_say">I prefer not to say</option>
+          </select>
+        </div>
+
+        <hr class="section-divider">
+        <div class="section-title">Gender Identity</div>
+        <div class="form-group">
+          <label for="comp_genderIdentity">How do you identify your gender?</label>
+          <select id="comp_genderIdentity">
+            <option value="">-- Select --</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+            <option value="non_binary">Non-Binary</option>
+            <option value="prefer_not_to_say">Prefer not to say / Decline to identify</option>
+            <option value="self_describe">Self-describe →</option>
+          </select>
+        </div>
+        <div class="form-group" id="comp_genderSelfDescribeLabel" style="display:none;">
+          <label for="comp_genderSelfDescribe">Describe your gender identity:</label>
+          <input type="text" id="comp_genderSelfDescribe" placeholder="e.g., Genderqueer, Agender...">
+        </div>
+
+        <hr class="section-divider">
+        <div class="section-title">Race / Ethnicity <span style="font-size:12px;font-weight:normal;color:var(--muted);">(EEO-1)</span></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="comp_isHispanicLatino">Are you Hispanic or Latino?</label>
+            <select id="comp_isHispanicLatino">
+              <option value="">-- Select --</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+              <option value="prefer_not_to_say">Prefer not to say</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="comp_raceEthnicity">What is your race/ethnicity?</label>
+            <select id="comp_raceEthnicity">
+              <option value="">-- Select --</option>
+              <option value="american_indian_alaskan_native">American Indian or Alaskan Native</option>
+              <option value="asian">Asian</option>
+              <option value="black_african_american">Black or African American</option>
+              <option value="hispanic_latino">Hispanic or Latino</option>
+              <option value="white">White</option>
+              <option value="native_hawaiian_pacific_islander">Native Hawaiian or Other Pacific Islander</option>
+              <option value="two_or_more_races">Two or More Races</option>
+              <option value="prefer_not_to_say">I prefer not to answer</option>
+            </select>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+        <div class="section-title">Sexual Orientation <span style="font-size:12px;font-weight:normal;color:var(--muted);">(Truly optional)</span></div>
+        <div class="form-group">
+          <label for="comp_lgbtqIdentity">Sexual orientation <small style="color:var(--muted);">(leave blank to skip on all applications)</small></label>
+          <select id="comp_lgbtqIdentity">
+            <option value="">Leave blank (skip on all applications)</option>
+            <option value="heterosexual">Heterosexual / Straight</option>
+            <option value="gay_lesbian">Gay or Lesbian</option>
+            <option value="bisexual">Bisexual</option>
+            <option value="prefer_not_to_say">Prefer not to say</option>
+          </select>
+        </div>
       </div>
 
-      <hr class="section-divider">
-
-      <!-- Common Application Questions -->
-      <div class="section-card" id="common-questions-section">
-        <h3 class="section-title">Common Application Questions</h3>
+      <!-- Sub-tab: Common Questions -->
+      <div class="resume-subtab" id="subtab-common">
         <div class="form-row">
           <div class="form-group">
             <label for="expectedSalary">Expected Salary</label>
@@ -677,101 +814,134 @@
             <label for="noticePeriod">Notice Period</label>
             <input type="text" id="noticePeriod" placeholder="e.g., 2 weeks">
           </div>
-          <div class="form-group" style="display:flex;align-items:center;padding-top:24px;">
-            <div class="checkbox-row">
-              <input type="checkbox" id="willingToTravel">
-              <label for="willingToTravel">Willing to travel as needed</label>
-            </div>
+          <div class="form-group">
+            <label for="availableStartDate">Available Start Date</label>
+            <input type="text" id="availableStartDate" placeholder="e.g., 09/15/2026 or Immediately">
           </div>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="willingToTravel">
+          <label for="willingToTravel">Willing to travel as needed</label>
         </div>
       </div>
 
-      <hr class="section-divider">
-
-      <button class="btn-primary" id="saveResumeBtn">Save Resume</button>
-      <button class="btn-secondary" id="loadTestDataBtn" style="margin-left: 8px;">Load Test Data</button>
-      <button class="btn-secondary" id="clearFormBtn" style="margin-left: 8px;">Clear Form</button>
+      <!-- Resume actions (always visible) -->
+      <div class="resume-actions">
+        <button class="btn-primary" id="saveResumeBtn">Save resume</button>
+        <button class="btn-secondary" id="loadTestDataBtn">Load test data</button>
+        <button class="btn-secondary" id="clearFormBtn">Clear form</button>
+      </div>
       <div id="resumeStatus" class="status"></div>
     </div>
 
-    <!-- ===== API KEY SECTION ===== -->
-    <div class="card" id="api-key">
-      <div class="card-title">Claude API Key</div>
-      <div class="card-desc">
-        Your API key is stored securely in your browser and never shared with external servers.
-        <a href="https://console.anthropic.com/account/keys" target="_blank" style="color: #4a9eff;">Get your API key</a>
+    <!-- ===== PROJECTS SECTION ===== -->
+    <div class="settings-section" id="section-projects">
+      <h1 class="page-title">Projects</h1>
+      <div class="card">
+        <div id="projectEntriesContainer"></div>
+        <button class="btn-add" id="addProjectBtn">+ Add Another Project</button>
       </div>
-      <label for="apiKey">API Key</label>
-      <input type="text" id="apiKey" placeholder="sk-ant-...">
-      <div class="help-text">Starts with sk-ant-</div>
-      <button class="btn-primary" id="saveApiKeyBtn">Save API Key</button>
-      <div id="apiKeyStatus" class="status"></div>
+    </div>
+
+    <!-- ===== API KEY SECTION ===== -->
+    <div class="settings-section" id="section-api-key">
+      <h1 class="page-title">API Key</h1>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:6px;">Claude API Key</div>
+        <div class="card-desc" style="margin-bottom:16px;">
+          Your API key is stored securely in your browser and never shared with external servers.
+          <a href="https://console.anthropic.com/account/keys" target="_blank" style="color:var(--accent);">Get your API key</a>
+        </div>
+        <label for="apiKey">API Key</label>
+        <input type="text" id="apiKey" placeholder="sk-ant-...">
+        <div class="help-text">Starts with sk-ant-</div>
+        <button class="btn-primary" id="saveApiKeyBtn">Save API Key</button>
+        <div id="apiKeyStatus" class="status"></div>
+      </div>
     </div>
 
     <!-- ===== PREFERENCES SECTION ===== -->
-    <div class="card" id="preferences">
-      <div class="card-title">Preferences</div>
-      <div class="card-desc">Customize how the assistant generates cover letters and applications.</div>
+    <div class="settings-section" id="section-preferences">
+      <h1 class="page-title">Preferences</h1>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:6px;">Cover Letter &amp; Application Settings</div>
+        <div class="card-desc" style="margin-bottom:16px;">Customize how the assistant generates cover letters and applications.</div>
 
-      <label for="coverLetterStyle">Cover Letter Tone</label>
-      <select id="coverLetterStyle">
-        <option value="professional">Professional &amp; Formal</option>
-        <option value="friendly">Friendly &amp; Approachable</option>
-        <option value="technical">Technical &amp; Direct</option>
-      </select>
+        <div style="margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border);">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;">Appearance</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:13px;color:var(--text);">Theme</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;">Applies to popup, sidebar, and settings</div>
+            </div>
+            <button id="themeToggleBtn" style="all:unset;cursor:pointer;padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--subtle);color:var(--text);font-size:12.5px;font-weight:500;font-family:inherit;transition:background 0.15s,border-color 0.15s;">Light mode</button>
+          </div>
+        </div>
 
-      <label for="emphasisAreas" style="margin-top:12px;">Areas to Emphasize in Applications (comma-separated)</label>
-      <textarea id="emphasisAreas" placeholder="e.g., Full-stack development, Healthcare domain, Leadership"></textarea>
+        <label for="coverLetterStyle">Cover Letter Tone</label>
+        <select id="coverLetterStyle" style="width:100%;padding:8px 10px;background:var(--subtle);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;margin-bottom:14px;">
+          <option value="professional">Professional &amp; Formal</option>
+          <option value="friendly">Friendly &amp; Approachable</option>
+          <option value="technical">Technical &amp; Direct</option>
+        </select>
 
-      <button class="btn-primary" id="savePreferencesBtn">Save Preferences</button>
-      <div id="preferencesStatus" class="status"></div>
+        <label for="emphasisAreas" style="display:block;font-size:12.5px;font-weight:500;color:var(--text);margin-bottom:5px;">Areas to Emphasize in Applications (comma-separated)</label>
+        <textarea id="emphasisAreas" placeholder="e.g., Full-stack development, Healthcare domain, Leadership"></textarea>
+
+        <button class="btn-primary" id="savePreferencesBtn">Save Preferences</button>
+        <div id="preferencesStatus" class="status"></div>
+      </div>
     </div>
 
     <!-- ===== Q&A BANK SECTION ===== -->
-    <div class="card" id="questions">
-      <div class="card-title">Personal Q&amp;A Bank</div>
-      <div class="card-desc">Paste questions and answers from past applications. Claude uses these as context when generating answers — so your real experience comes through, not generic text.</div>
+    <div class="settings-section" id="section-questions">
+      <h1 class="page-title">Q&amp;A Bank</h1>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:6px;">Personal Q&amp;A Bank</div>
+        <div class="card-desc" style="margin-bottom:16px;">Paste questions and answers from past applications. Claude uses these as context when generating answers — so your real experience comes through, not generic text.</div>
 
-      <label for="qaFreeText">Paste your experience (free-form)</label>
-      <textarea id="qaFreeText" style="min-height:130px;" placeholder="Write naturally — e.g. 'An interviewer asked about my leadership style and I said I prefer collaborative decisions with clear ownership. They also asked how I use AI in my workflow...'"></textarea>
+        <label for="qaFreeText" style="display:block;font-size:12.5px;font-weight:500;color:var(--text);margin-bottom:5px;">Paste your experience (free-form)</label>
+        <textarea id="qaFreeText" style="min-height:130px;" placeholder="Write naturally — e.g. 'An interviewer asked about my leadership style and I said I prefer collaborative decisions with clear ownership...'"></textarea>
 
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:4px;">
-        <button class="btn-primary" id="parseQABtn">Parse &amp; Preview</button>
-      </div>
-      <div id="qaParseStatus" class="status"></div>
-
-      <!-- Preview panel — shown after parsing -->
-      <div id="qaPreviewPanel">
-        <div id="qaPreviewHeader" style="font-size:13px;color:#aaa;margin-bottom:12px;"></div>
-        <div id="qaPreviewPairs"></div>
-        <div style="display:flex;gap:10px;margin-top:4px;">
-          <button class="btn-primary" id="qaSaveAllBtn">Save All</button>
-          <button class="btn-secondary" id="qaDiscardBtn">Discard</button>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:4px;">
+          <button class="btn-primary" id="parseQABtn">Parse &amp; Preview</button>
         </div>
-      </div>
+        <div id="qaParseStatus" class="status"></div>
 
-      <!-- Saved bank list -->
-      <div id="qaBankSection">
-        <div id="qaBankHeader">Saved Q&amp;A Bank</div>
-        <div id="qaBankList"></div>
+        <!-- Preview panel -->
+        <div id="qaPreviewPanel">
+          <div id="qaPreviewHeader" style="font-size:13px;color:var(--muted);margin-bottom:10px;"></div>
+          <div id="qaPreviewPairs"></div>
+          <div style="display:flex;gap:10px;margin-top:4px;">
+            <button class="btn-primary" id="qaSaveAllBtn">Save All</button>
+            <button class="btn-secondary" id="qaDiscardBtn">Discard</button>
+          </div>
+        </div>
+
+        <!-- Saved bank list -->
+        <div id="qaBankSection">
+          <div id="qaBankHeader">Saved Q&amp;A Bank</div>
+          <div id="qaBankList"></div>
+        </div>
       </div>
     </div>
 
     <!-- ===== FORM LOGS SECTION ===== -->
-    <div class="card" id="form-logs">
-      <div class="card-title">Form Fill Logs</div>
-      <div class="card-desc">
-        Review what was filled and what was missed in past applications. Stored locally (last 50 entries).
-      </div>
+    <div class="settings-section" id="section-form-logs">
+      <h1 class="page-title">Form Logs</h1>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:6px;">Form Fill Logs</div>
+        <div class="card-desc" style="margin-bottom:16px;">Review what was filled and what was missed in past applications. Stored locally (last 50 entries).</div>
 
-      <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
-        <button class="btn-primary" id="downloadLogsJsonBtn">⬇ Download JSON</button>
-        <button class="btn-secondary" id="downloadLogsTxtBtn">⬇ Download Text</button>
-        <button class="btn-secondary" id="clearLogsBtn" style="margin-left: auto; background: #3a1b1b; color: #ff6b6b; border: 1px solid #ff6b6b;">🗑 Clear Logs</button>
-      </div>
+        <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+          <button class="btn-primary" id="downloadLogsJsonBtn">Download JSON</button>
+          <button class="btn-secondary" id="downloadLogsTxtBtn">Download Text</button>
+          <button class="btn-danger" id="clearLogsBtn" style="margin-left:auto;">Clear Logs</button>
+        </div>
 
-      <div id="logsList" style="font-size: 13px; color: #aaa; max-height: 600px; overflow-y: auto;"></div>
-      <div id="logsStatus" class="status" style="margin-top: 8px;"></div>
+        <div id="logsList" style="font-size:13px; color:var(--muted); max-height:600px; overflow-y:auto;"></div>
+        <div id="logsStatus" class="status" style="margin-top:8px;"></div>
+      </div>
     </div>
 
   </div>

@@ -1096,7 +1096,7 @@ async function loadFormLogs(): Promise<any[]> {
 function renderLogs(logs: any[]) {
   const container = document.getElementById('logsList')!;
   if (logs.length === 0) {
-    container.innerHTML = '<p style="color:#666; text-align:center; padding: 24px 0;">No form logs yet. Fill a form to start logging.</p>';
+    container.innerHTML = '<p style="color:var(--muted); text-align:center; padding: 24px 0;">No form logs yet. Fill a form to start logging.</p>';
     return;
   }
 
@@ -1107,25 +1107,25 @@ function renderLogs(logs: any[]) {
     const failedFields = entry.fields.filter((f: any) => !f.filled);
 
     return `
-      <div style="border: 1px solid #2a2a2a; border-radius: 6px; padding: 14px; margin-bottom: 12px; background: #1a1a1a;">
+      <div style="border: 1px solid var(--border); border-radius: 9px; padding: 14px; margin-bottom: 10px; background: var(--surface);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
-          <strong style="color:#e0e0e0;">${escapeHTML(entry.jobTitle || 'Unknown Role')} @ ${escapeHTML(entry.company || 'Unknown Company')}</strong>
-          <span style="font-size:11px; color:#666;">${date}</span>
+          <strong style="color:var(--text);">${escapeHTML(entry.jobTitle || 'Unknown Role')} @ ${escapeHTML(entry.company || 'Unknown Company')}</strong>
+          <span style="font-size:11px; color:var(--muted);">${date}</span>
         </div>
-        <div style="font-size: 12px; color: #888; margin-bottom: 8px;">
+        <div style="font-size: 12px; color: var(--muted); margin-bottom: 8px;">
           ${escapeHTML(entry.boardType)} · ${entry.jobDescription ? 'With job description' : 'No job description'} ·
-          <span style="color: ${successRate >= 60 ? '#4caf50' : successRate >= 30 ? '#ffc107' : '#f44336'}">
+          <span style="color: ${successRate >= 60 ? 'var(--success)' : successRate >= 30 ? '#d97706' : 'var(--danger)'}">
             ${filled}/${totalFields} fields (${successRate}%)
           </span>
         </div>
 
         ${filledFields.length > 0 ? `
         <div style="margin-bottom: 6px;">
-          <div style="color: #4caf50; font-size: 11px; font-weight: 600; margin-bottom: 4px;">✅ FILLED</div>
+          <div style="color: var(--success); font-size: 11px; font-weight: 600; margin-bottom: 4px;">FILLED</div>
           ${filledFields.map((f: any) => `
-            <div style="font-size: 12px; color: #aaa; padding: 2px 0;">
+            <div style="font-size: 12px; color: var(--muted); padding: 2px 0;">
               ${escapeHTML(f.fieldLabel || f.fieldName || 'Unknown')} (${f.fieldType})
-              ${f.generatedByAI ? `<span style="background:#1a3a2a;color:#4caf50;border-radius:3px;padding:1px 5px;font-size:10px;margin-left:4px;">AI ${f.confidence ? f.confidence + '%' : ''}</span>` : ''}
+              ${f.generatedByAI ? `<span style="background:rgba(63,145,66,0.1);color:var(--success);border-radius:3px;padding:1px 5px;font-size:10px;margin-left:4px;">AI ${f.confidence ? f.confidence + '%' : ''}</span>` : ''}
               → "${escapeHTML(String(f.value || '').slice(0, 100))}${String(f.value || '').length > 100 ? '…' : ''}"
             </div>
           `).join('')}
@@ -1133,11 +1133,11 @@ function renderLogs(logs: any[]) {
 
         ${failedFields.length > 0 ? `
         <div>
-          <div style="color: #f44336; font-size: 11px; font-weight: 600; margin-bottom: 4px;">❌ NOT FILLED</div>
+          <div style="color: var(--danger); font-size: 11px; font-weight: 600; margin-bottom: 4px;">NOT FILLED</div>
           ${failedFields.map((f: any) => `
-            <div style="font-size: 12px; color: #888; padding: 2px 0;">
+            <div style="font-size: 12px; color: var(--muted); padding: 2px 0;">
               ${escapeHTML(f.fieldLabel || f.fieldName || 'Unknown')} (${f.fieldType})
-              <span style="color: #555;"> — ${escapeHTML(f.reason || 'Unknown reason')}</span>
+              <span style="color: var(--muted);"> — ${escapeHTML(f.reason || 'Unknown reason')}</span>
             </div>
           `).join('')}
         </div>` : ''}
@@ -1204,9 +1204,172 @@ document.getElementById('clearLogsBtn')?.addEventListener('click', async () => {
   showStatus('logsStatus', 'All logs cleared.', 'success');
 });
 
+// ─── Left-nav section switcher ────────────────────────────────────────────────
+
+function initNavSwitcher(): void {
+  const navItems = document.querySelectorAll<HTMLButtonElement>('.nav-item[data-section]');
+  const sections = document.querySelectorAll<HTMLElement>('.settings-section');
+
+  navItems.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.section!;
+
+      navItems.forEach(n => n.classList.toggle('active', n.dataset.section === target));
+      sections.forEach(sec => {
+        const secId = sec.id.replace('section-', '');
+        sec.classList.toggle('active', secId === target);
+      });
+    });
+  });
+}
+
+// ─── Resume sub-tabs ──────────────────────────────────────────────────────────
+
+function initResumeSubTabs(): void {
+  const subtabBtns = document.querySelectorAll<HTMLButtonElement>('.subtab-btn[data-subtab]');
+  const subtabs    = document.querySelectorAll<HTMLElement>('.resume-subtab');
+
+  subtabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.subtab!;
+
+      subtabBtns.forEach(b => b.classList.toggle('active', b.dataset.subtab === target));
+      subtabs.forEach(tab => {
+        const tabId = tab.id.replace('subtab-', '');
+        tab.classList.toggle('active', tabId === target);
+      });
+    });
+  });
+}
+
+// ─── Stored Resume PDF ────────────────────────────────────────────────────────
+
+const PDF_STORE_KEY = 'jae_resume_pdf';
+
+function renderPDFStoreStatus(pdf: { name: string; storedAt: number } | null): void {
+  const area      = document.getElementById('pdfStoreStatusArea')!;
+  const removeBtn = document.getElementById('pdfStoreRemoveBtn') as HTMLButtonElement;
+  if (pdf) {
+    const date = new Date(pdf.storedAt).toLocaleDateString();
+    area.innerHTML =
+      `<div style="background:var(--subtle);border:1px solid var(--border);border-radius:6px;padding:9px 12px;font-size:13px;">` +
+      `<span style="color:var(--accent);font-weight:600;">${escapeHTML(pdf.name)}</span>` +
+      `<span style="color:var(--muted);margin-left:10px;">Saved ${date}</span></div>`;
+    removeBtn.style.display = '';
+  } else {
+    area.innerHTML = '<div style="color:var(--muted);font-size:13px;">No PDF stored yet.</div>';
+    removeBtn.style.display = 'none';
+  }
+}
+
+function initPDFStorageSection(): void {
+  chrome.storage.local.get([PDF_STORE_KEY], res => {
+    const pdf = res[PDF_STORE_KEY];
+    renderPDFStoreStatus(pdf ? { name: pdf.name, storedAt: pdf.storedAt } : null);
+  });
+
+  const fileInput = document.getElementById('pdfStoreInput') as HTMLInputElement;
+  const removeBtn = document.getElementById('pdfStoreRemoveBtn') as HTMLButtonElement;
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    showStatus('pdfStoreStatus', 'Saving…', 'success');
+    const base64 = await fileToBase64(file);
+    const data   = { name: file.name, base64, storedAt: Date.now() };
+    chrome.storage.local.set({ [PDF_STORE_KEY]: data }, () => {
+      renderPDFStoreStatus({ name: file.name, storedAt: data.storedAt });
+      showStatus('pdfStoreStatus', 'PDF saved — will auto-attach when you fill forms.', 'success');
+      fileInput.value = '';
+    });
+  });
+
+  removeBtn.addEventListener('click', () => {
+    chrome.storage.local.remove([PDF_STORE_KEY], () => {
+      renderPDFStoreStatus(null);
+      showStatus('pdfStoreStatus', 'PDF removed.', 'success');
+    });
+  });
+}
+
+// ─── Resume PDF Parser ────────────────────────────────────────────────────────
+
+function initResumePDFParser(): void {
+  const fileInput  = document.getElementById('resumePdfInput')  as HTMLInputElement;
+  const nameLabel  = document.getElementById('resumePdfName')   as HTMLSpanElement;
+  const parseBtn   = document.getElementById('parseResumeBtn')  as HTMLButtonElement;
+
+  let selectedFile: File | null = null;
+
+  fileInput.addEventListener('change', () => {
+    selectedFile = fileInput.files?.[0] ?? null;
+    nameLabel.textContent = selectedFile ? selectedFile.name : 'No file chosen';
+    parseBtn.disabled = !selectedFile;
+  });
+
+  parseBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    parseBtn.disabled = true;
+    parseBtn.textContent = 'Parsing…';
+    showStatus('resumeParseStatus', 'Reading PDF…', 'success');
+
+    try {
+      const base64 = await fileToBase64(selectedFile);
+      showStatus('resumeParseStatus', 'Sending to Claude — this may take a few seconds…', 'success');
+
+      const result: any = await new Promise(resolve =>
+        chrome.runtime.sendMessage({ action: 'parseResumePDF', base64PDF: base64 }, resolve)
+      );
+
+      if (result?.ok && result.data) {
+        populateForm(result.data as ResumeData);
+        showStatus('resumeParseStatus', 'Resume parsed! Review the form and click "Save resume" to keep it.', 'success');
+      } else {
+        showStatus('resumeParseStatus', `Parse failed: ${result?.error || 'unknown error'}`, 'error');
+      }
+    } catch {
+      showStatus('resumeParseStatus', 'Unexpected error — check the extension console.', 'error');
+    } finally {
+      parseBtn.disabled = false;
+      parseBtn.textContent = 'Parse & fill fields';
+    }
+  });
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 // ─── Page load ────────────────────────────────────────────────────────────────
 
 window.addEventListener('load', () => {
+  // Apply saved theme
+  chrome.storage.local.get(['jae_theme'], (res: any) => {
+    const theme = res.jae_theme || 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    const btn = document.getElementById('themeToggleBtn') as HTMLButtonElement | null;
+    if (btn) btn.textContent = theme === 'dark' ? 'Dark mode' : 'Light mode';
+  });
+
+  // Theme toggle button
+  document.getElementById('themeToggleBtn')?.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    chrome.storage.local.set({ jae_theme: next });
+    const btn = document.getElementById('themeToggleBtn') as HTMLButtonElement;
+    btn.textContent = next === 'dark' ? 'Dark mode' : 'Light mode';
+  });
+
+  initNavSwitcher();
+  initResumeSubTabs();
+  initPDFStorageSection();
+  initResumePDFParser();
   loadQABank().then(renderQABank);
 
   // Load API key
@@ -1229,7 +1392,6 @@ window.addEventListener('load', () => {
   // Load resume
   chrome.storage.local.get(['resume'], (result: { [key: string]: any }) => {
     if (result.resume && result.resume.personal) {
-      // Stored as ResumeData
       populateForm(result.resume as ResumeData);
     } else {
       // No resume yet — initialise blank entries

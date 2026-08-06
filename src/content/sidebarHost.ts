@@ -182,6 +182,20 @@ export function captureAsQuestion(text: string): void {
 
 function initListeners(): void {
   window.addEventListener('message', (e: MessageEvent) => {
+    // Fill progress streamed from content.ts via window.top.postMessage
+    if (e.data?.__jae_fill === true) {
+      const { type } = e.data as { type: string };
+      if (type === 'start') {
+        showSidebar();
+        postToSidebar('fillStart', {});
+      } else if (type === 'field' || type === 'ai_thinking' || type === 'pdf') {
+        postToSidebar('fillProgress', e.data);
+      } else if (type === 'complete') {
+        postToSidebar('fillComplete', e.data);
+      }
+      return;
+    }
+
     if (e.data?.type !== MSG_UP) return;
     const { action, data, reqId } = e.data as { action: string; data: any; reqId?: number };
 
@@ -192,6 +206,10 @@ function initListeners(): void {
       return;
     }
     if (action === 'hideSidebar') { hideSidebar(); return; }
+    if (action === 'triggerFill') {
+      window.dispatchEvent(new CustomEvent('jae_fill_triggered'));
+      return;
+    }
 
     if (action === 'selectJd') {
       const id = (data as any)?.id as string;

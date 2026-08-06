@@ -7,16 +7,78 @@
 </head>
 <body>
   <div id="popup">
-    <h1>Job Assistant <button id="settingsBtn" title="Settings">⚙️</button></h1>
 
     <!-- ── Main Menu ─────────────────────────────────────────────────────── -->
     <div id="buttonContainer">
-      <button class="btn-primary"   id="openWorkspaceBtn">Open Workspace →</button>
-      <button class="btn-primary"   id="fillFormBtn">📋 Fill Application Form</button>
-      <button class="btn-secondary" id="analyzeBtn">📊 Analyze Job Matching</button>
-      <button class="btn-secondary" id="coverLetterBtn">📝 Copy Cover Letter</button>
-      <button class="btn-secondary" id="editResumeBtn">✏️ Edit Resume</button>
-    </div>
+
+      <!-- Header row -->
+      <div class="popup-header">
+        <div class="popup-header-left">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          <span class="popup-title">Job Assistant</span>
+        </div>
+        <button id="settingsBtn" title="Settings" class="icon-btn">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Detected job chip -->
+      <div id="jobChip" class="job-chip hidden">
+        <div class="job-chip-info">
+          <div class="job-chip-title" id="jobChipTitle">Job Title</div>
+          <div class="job-chip-sub" id="jobChipSub">Company · detected on this page</div>
+        </div>
+        <button class="job-chip-clear" id="jobChipClear" title="Clear">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div id="noJobMsg" class="no-job-msg">No job detected on this page</div>
+
+      <!-- Primary button -->
+      <button class="btn-fill" id="fillFormBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 11 12 14 22 4"/>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
+        Fill this application
+      </button>
+
+      <!-- Secondary row -->
+      <div class="secondary-row">
+        <button class="btn-secondary-card" id="analyzeBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          <span>Check match</span>
+        </button>
+        <button class="btn-secondary-card" id="coverLetterBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"/>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          <span>Cover letter</span>
+        </button>
+      </div>
+
+      <!-- Footer row -->
+      <div class="popup-footer">
+        <button class="footer-link accent" id="openWorkspaceBtn">Open full workspace →</button>
+        <button class="footer-link muted" id="editResumeBtn">Edit resume</button>
+      </div>
+
+    </div><!-- /buttonContainer -->
 
     <!-- ── Fill Form Flow ─────────────────────────────────────────────────── -->
     <div id="formFillContainer" class="hidden">
@@ -26,8 +88,8 @@
       </div>
 
       <div id="jobDescChoices" class="btn-stack">
-        <button class="btn-primary"   id="hasJobDescBtn">✅ Yes, I have the job description</button>
-        <button class="btn-secondary" id="noJobDescBtn">⏭️ No, just fill the form</button>
+        <button class="btn-primary"   id="hasJobDescBtn">Yes, I have the job description</button>
+        <button class="btn-secondary" id="noJobDescBtn">No, just fill the form</button>
       </div>
 
       <div id="jobDescInput" class="hidden" style="margin-top:8px;">
@@ -41,13 +103,13 @@
       </div>
 
       <div id="fillingStatus" class="hidden card card-blue" style="margin-top:8px;text-align:center;">
-        <strong>⏳ Filling form…</strong>
+        <strong>Filling form…</strong>
         <p>This may take a few seconds.</p>
       </div>
 
       <div id="fillResult" class="hidden card card-green" style="margin-top:8px;"></div>
 
-      <button class="btn-primary hidden" id="doneFillingBtn" style="margin-top:8px;width:100%;">✓ Done</button>
+      <button class="btn-primary hidden" id="doneFillingBtn" style="margin-top:8px;width:100%;">Done</button>
       <button class="btn-secondary" id="backFromFillBtn" style="margin-top:8px;">← Back</button>
     </div>
 
@@ -55,7 +117,7 @@
     <div id="analysisContainer" class="hidden">
       <div class="card card-green">
         <div class="match-percentage" id="matchPercentage">--</div>
-        <div id="analysis" style="font-size:13px;color:#555;margin-top:4px;"></div>
+        <div id="analysis" style="font-size:13px;color:var(--muted);margin-top:4px;"></div>
       </div>
       <button class="btn-secondary" id="backToMenuBtn">← Back</button>
     </div>
@@ -70,12 +132,12 @@
           <p id="clManualDetail" style="margin-top:4px;">No job description detected. Paste it below for a tailored letter.</p>
         </div>
         <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:500;">
-          Question or Prompt <span style="font-weight:400;color:#888;">(optional)</span>
+          Question or Prompt <span style="font-weight:400;color:var(--muted);">(optional)</span>
         </label>
         <textarea id="clQuestion" style="height:56px;" placeholder="e.g. Write a cover letter focused on my backend experience…"></textarea>
         <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:500;">Job Description</label>
         <textarea id="clJobDesc" style="height:110px;" placeholder="Paste the job posting here…"></textarea>
-        <div id="clManualInfoMsg" style="min-height:16px;font-size:12px;color:#c62828;margin:2px 0 4px;"></div>
+        <div id="clManualInfoMsg" style="min-height:16px;font-size:12px;color:var(--danger);margin:2px 0 4px;"></div>
         <div class="btn-stack">
           <button class="btn-primary"   id="clGenerateBtn">Generate &amp; Copy</button>
           <button class="btn-secondary" id="clSkipDescBtn">Generate without JD</button>
@@ -83,12 +145,12 @@
       </div>
 
       <div id="clStatus" class="card card-blue hidden" style="text-align:center;">
-        <strong>⏳ Generating cover letter…</strong>
+        <strong>Generating cover letter…</strong>
         <p id="clStatusDetail" style="margin-top:4px;font-size:13px;"></p>
       </div>
       <div id="clResult" class="card card-green hidden" style="margin-top:8px;">
         <p id="clResultMsg" style="margin:0;font-weight:bold;"></p>
-        <p id="clResultDetail" style="margin:4px 0 0;font-size:12px;color:#2e7d32;"></p>
+        <p id="clResultDetail" style="margin:4px 0 0;font-size:12px;color:var(--success);"></p>
       </div>
       <div id="clError" class="card card-red hidden" style="margin-top:8px;">
         <p id="clErrorMsg" style="margin:0;"></p>

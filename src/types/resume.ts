@@ -151,6 +151,7 @@ export interface CommonQuestions {
   expectedSalary?: string;
   yearsOfLeadership?: string;
   noticePeriod?: string;
+  availableStartDate?: string;
   willingToTravel?: boolean;
 }
 

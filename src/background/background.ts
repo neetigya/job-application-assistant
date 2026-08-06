@@ -2,7 +2,8 @@
 import { JobData } from '../types/resume';
 import { logger } from '../utils/logger';
 
-const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
+const CLAUDE_MODEL        = 'claude-haiku-4-5-20251001'; // parsing, formatting, analysis
+const CLAUDE_ANSWER_MODEL = 'claude-sonnet-4-6';          // answer generation, cover letters
 
 const HUMAN_RULES = `
 
@@ -145,8 +146,15 @@ async function generateAnswerForQuestion(
   const questionType = isWhyInterested ? 'why_interested' : 'open_ended';
 
   const prompt = isWhyInterested
-    ? `Generate a compelling, genuine answer (2-3 sentences) to this job application question:
+    ? `You are helping a job applicant write a genuine answer to this question. Read it carefully.
+
+Question:
 "${fieldLabel}"
+
+Write 2-3 sentences that:
+- Show specific knowledge of this company and role (use the job description, not generic praise)
+- Connect one or two concrete things from the candidate's background to what makes this company/role appealing
+- Sound like a real person who has actually read the job posting
 
 CANDIDATE BACKGROUND:
 ${resumeContent}${qaBankBlock}
@@ -156,21 +164,26 @@ ${jobDescription || '(not provided)'}
 
 Company: ${companyName || '(unknown)'}
 
-Requirements:
-- Show specific knowledge of the role/company if job description is available
-- Highlight 1-2 relevant skills from the candidate's background
-- Sound authentic, not generic
-- 2-3 sentences maximum
-
 Reply with only the answer text.` + HUMAN_RULES
-    : `Generate a concise, professional answer (1-3 sentences) to this job application question:
+    : `You are helping a job applicant write a genuine answer to this application question.
+
+Question:
 "${fieldLabel}"
+
+Instructions:
+1. Read the question carefully and answer ONLY what it asks — do not give a general career summary unless the question literally asks for one
+2. Draw from ALL available information below: work history, skills, education, common questions, and the Q&A bank — pick the most relevant details for this specific question, not just the profile summary
+3. Use the Q&A bank as your primary voice and style guide — if similar past answers exist, match their tone, sentence rhythm, and how candid/specific they are
+4. Do NOT copy any block of text verbatim; synthesize a fresh answer that sounds like the same person who wrote those Q&A bank answers
+5. Scale length to what the question invites: 1-2 sentences for simple factual questions; 2-4 sentences with a specific example or number for detailed "describe your experience" or "tell us about" prompts
 
 CANDIDATE BACKGROUND:
 ${resumeContent}${qaBankBlock}
 
 JOB DESCRIPTION:
 ${jobDescription || '(not provided)'}
+
+Company: ${companyName || '(unknown)'}
 
 Reply with only the answer text.` + HUMAN_RULES;
 
@@ -184,8 +197,8 @@ Reply with only the answer text.` + HUMAN_RULES;
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: isWhyInterested ? 250 : 600,
+        model: CLAUDE_ANSWER_MODEL,
+        max_tokens: 600,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -251,7 +264,7 @@ Reply with only the cover letter body text.` + HUMAN_RULES;
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL,
+        model: CLAUDE_ANSWER_MODEL,
         max_tokens: 1500,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -277,6 +290,81 @@ function cleanGeneratedText(raw: string): string {
     .trim();
 }
 
+// ── Resume PDF Parser ─────────────────────────────────────────────────────────
+
+async function parseResumeFromPDF(base64PDF: string): Promise<{ ok: boolean; data?: any; error?: string }> {
+  const apiKey = await getApiKey();
+  if (!apiKey) return { ok: false, error: 'no_key' };
+
+  const prompt = `Extract all information from this resume PDF and return ONLY a raw JSON object — no markdown fences, no commentary, nothing else.
+
+Use this exact structure (omit optional url if absent, use empty string for missing text, false for missing booleans, empty arrays for missing lists):
+
+{
+  "personal": {
+    "firstName": "", "lastName": "", "email": "", "phone": "",
+    "location": { "city": "", "state": "", "country": "" },
+    "preferredName": "",
+    "willingToRelocate": false, "ableToCommute": false, "currentlyEmployed": false,
+    "workAuthorization": true, "requiresSponsorship": false
+  },
+  "profileSummary": "",
+  "workHistory": [
+    { "jobTitle": "", "company": "", "startDate": "", "endDate": "", "isPresent": false, "description": "", "achievements": "" }
+  ],
+  "education": [
+    { "school": "", "degree": "", "fieldOfStudy": "", "graduationDate": "" }
+  ],
+  "skills": { "backend": "", "frontend": "", "databases": "", "devops": "", "other": "" },
+  "projects": [
+    { "name": "", "startDate": "", "endDate": "", "isPresent": false, "description": "", "techStack": "", "url": "" }
+  ],
+  "onlinePresence": { "portfolioUrl": "", "githubUrl": "", "linkedinUrl": "" }
+}`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'anthropic-beta': 'pdfs-2024-09-25',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64PDF } },
+            { type: 'text', text: prompt },
+          ],
+        }],
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      return { ok: false, error: `api_${response.status}: ${(err as any)?.error?.message || ''}` };
+    }
+
+    const apiData = await response.json();
+    const text = (apiData.content[0]?.text || '').trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+
+    try {
+      return { ok: true, data: JSON.parse(text) };
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) return { ok: true, data: JSON.parse(match[0]) };
+      return { ok: false, error: 'parse_failed' };
+    }
+  } catch {
+    return { ok: false, error: 'network' };
+  }
+}
+
 // ── Personal Q&A Bank ─────────────────────────────────────────────────────────
 
 async function getQABank(): Promise<Array<{ id: string; question: string; answer: string }>> {
@@ -293,9 +381,9 @@ function formatQABankForPrompt(qaBank: Array<{ question: string; answer: string 
 async function parsePersonalQA(
   freeText: string,
   existingQA: Array<{ id: string; question: string }>
-): Promise<{ pairs: Array<{ question: string; answer: string; similarToId: string | null; similarToQuestion: string | null }> }> {
+): Promise<{ pairs: Array<{ question: string; answer: string; similarToId: string | null; similarToQuestion: string | null }>; error?: string }> {
   const apiKey = await getApiKey();
-  if (!apiKey) return { pairs: [] };
+  if (!apiKey) return { pairs: [], error: 'no_key' };
 
   const existingBlock = existingQA.length > 0
     ? `\nEXISTING Q&A (for similarity detection — include the exact ID if similar):\n` +
@@ -327,16 +415,20 @@ async function parsePersonalQA(
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: 2000,
+        max_tokens: 8192,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
-    if (!response.ok) return { pairs: [] };
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      const msg = (err as any)?.error?.message || `HTTP ${response.status}`;
+      return { pairs: [], error: msg };
+    }
     const data = await response.json();
     const raw = (data.content[0].text || '').trim()
       .replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { pairs: [] };
+    if (!jsonMatch) return { pairs: [], error: `unexpected_response: ${raw.slice(0, 120)}` };
     const parsed = JSON.parse(jsonMatch[0]);
     return {
       pairs: (parsed.pairs || []).map((p: any) => ({
@@ -346,8 +438,8 @@ async function parsePersonalQA(
         similarToQuestion: p.similarToQuestion || null,
       })),
     };
-  } catch {
-    return { pairs: [] };
+  } catch (e: any) {
+    return { pairs: [], error: e?.message || 'network_error' };
   }
 }
 
@@ -480,6 +572,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'parsePersonalQA') {
     parsePersonalQA(request.freeText || '', request.existingQA || []).then(sendResponse);
+    return true;
+  }
+
+  if (request.action === 'parseResumePDF') {
+    parseResumeFromPDF(request.base64PDF || '').then(sendResponse);
     return true;
   }
 

@@ -5,6 +5,7 @@
   "description": "Intelligent job application matching and form filling with Claude AI",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "activeTab",
     "clipboardWrite"
   ],

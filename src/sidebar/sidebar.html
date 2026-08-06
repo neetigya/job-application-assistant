@@ -8,50 +8,130 @@
 <body>
   <div id="sidebar-root">
 
+    <!-- ── Header ─────────────────────────────────────────── -->
     <div id="header">
-      <span id="header-title">Job Assistant</span>
+      <div id="header-title-block">
+        <div id="header-title">Job Assistant</div>
+        <div id="header-subtitle" class="hidden"></div>
+      </div>
       <div id="header-actions">
-        <button id="settings-btn" title="Settings">⚙</button>
-        <button id="close-btn" title="Close">✕</button>
+        <button id="settings-btn" title="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+        <button id="close-btn" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-label-row">
-        <span class="section-label">Recent Jobs</span>
-        <div id="jd-action-btns" class="hidden">
-          <button class="sm-btn" id="copy-jd-btn">Copy JD</button>
-          <button class="sm-btn danger" id="deselect-jd-btn">Deselect</button>
+    <!-- ── Match card ─────────────────────────────────────── -->
+    <div id="match-card">
+      <div id="match-card-inner">
+        <!-- progress ring + score -->
+        <div id="match-ring-wrap">
+          <svg id="match-ring-svg" width="38" height="38" viewBox="0 0 38 38">
+            <circle class="ring-track" cx="19" cy="19" r="16" fill="none" stroke-width="3"/>
+            <circle id="match-ring-fill" cx="19" cy="19" r="16" fill="none" stroke-width="3"
+              stroke-dasharray="100.5" stroke-dashoffset="100.5"
+              transform="rotate(-90 19 19)"/>
+          </svg>
+          <span id="match-pct-label">--</span>
+        </div>
+        <!-- label + reason -->
+        <div id="match-text">
+          <div id="match-label" class="match-placeholder">Analyze a job to see match score</div>
+          <div id="match-reason" class="hidden"></div>
+          <button id="match-details-btn" class="match-details-link hidden">Details</button>
         </div>
       </div>
-      <div id="jd-list"></div>
+      <!-- expanded analysis text -->
+      <div id="match-analysis-expanded" class="hidden"></div>
     </div>
 
-    <div class="section">
-      <div class="section-label">Ask / Generate</div>
-      <textarea id="question-input" placeholder="Question or prompt (optional)…"></textarea>
-      <div id="generate-btns">
-        <button class="btn-primary full-width" id="generate-answer-btn">Generate Answer</button>
-        <button class="btn-secondary full-width" id="cover-letter-btn">Cover Letter</button>
-      </div>
-      <div id="context-indicator"></div>
+    <!-- ── Tab bar ────────────────────────────────────────── -->
+    <div id="tab-bar">
+      <button class="tab-btn active" id="tab-btn-workspace">Workspace</button>
+      <button class="tab-btn" id="tab-btn-fields">Fill progress</button>
     </div>
 
-    <div id="result-section" class="section hidden">
-      <div class="section-label">Result</div>
-      <div id="result-area"></div>
-      <div class="row-end">
-        <button class="sm-btn" id="copy-result-btn">Copy</button>
+    <!-- ── Fill progress panel ────────────────────────────── -->
+    <div id="panel-fields" class="tab-panel" style="display:none;">
+
+      <!-- Empty state (shown before any fill has run) -->
+      <div id="fill-empty-state">
+        <p class="fill-empty-msg">No fill in progress yet.<br>Open a job application page and fill it.</p>
+        <button class="btn-fill-empty" id="fill-empty-trigger-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 11 12 14 22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+          Fill this application
+        </button>
       </div>
+
+      <!-- Progress summary -->
+      <div id="fill-progress-bar" class="hidden">
+        <div id="fill-count-row">
+          <span id="fill-count-num" class="fill-count-big">0</span>
+          <span id="fill-count-denom" class="fill-count-denom">/0</span>
+          <span class="fill-count-caption">fields filled</span>
+        </div>
+        <div id="fill-track-wrap">
+          <div id="fill-track"><div id="fill-track-fill"></div></div>
+        </div>
+      </div>
+
+      <div id="fill-feed-header"></div>
+      <div id="fill-feed"></div>
     </div>
 
-    <div id="explain-section" class="section hidden">
-      <div class="section-label">Explain</div>
-      <div id="explain-area"></div>
-      <div class="row-end">
-        <button class="sm-btn" id="copy-explain-btn">Copy</button>
+    <!-- ── Workspace panel ────────────────────────────────── -->
+    <div id="panel-workspace" class="tab-panel">
+
+      <div class="section">
+        <div class="section-label-row">
+          <span class="section-label">Recent Jobs</span>
+          <div id="jd-action-btns" class="hidden">
+            <button class="sm-btn" id="copy-jd-btn">Copy JD</button>
+            <button class="sm-btn danger" id="deselect-jd-btn">Deselect</button>
+          </div>
+        </div>
+        <div id="jd-list"></div>
+        <div class="jd-hint">Click a job to select it · click ✕ to remove it</div>
       </div>
-    </div>
+
+      <div class="section">
+        <div class="section-label">Ask / Generate</div>
+        <textarea id="question-input" placeholder="Question or prompt (optional)…"></textarea>
+        <div id="generate-btns">
+          <button class="btn-primary full-width" id="generate-answer-btn">Generate answer</button>
+          <button class="btn-secondary full-width" id="cover-letter-btn">Write cover letter</button>
+        </div>
+        <div id="context-indicator"></div>
+      </div>
+
+      <div id="result-section" class="section hidden">
+        <div class="section-label">Result</div>
+        <div id="result-area"></div>
+        <div class="row-end">
+          <button class="sm-btn" id="copy-result-btn">Copy</button>
+        </div>
+      </div>
+
+      <div id="explain-section" class="section hidden">
+        <div class="section-label">Explain</div>
+        <div id="explain-area"></div>
+        <div class="row-end">
+          <button class="sm-btn" id="copy-explain-btn">Copy</button>
+        </div>
+      </div>
+
+    </div><!-- /panel-workspace -->
 
   </div>
   <script src="sidebar.js"></script>

@@ -1,6 +1,6 @@
 // Content script - runs on job posting pages
 import { detectQuestionType, isLikelyOpenQuestion } from '../utils/questionAnswerer';
-import { JobData, FieldLogEntry } from '../types/resume';
+import { JobData, FieldLogEntry, FormLogEntry } from '../types/resume';
 import { logger } from '../utils/logger';
 import { isDev, getDevConfig } from '../config/devMode';
 import { initSelectionToolbar } from './selectionToolbar';
@@ -11,6 +11,15 @@ interface FillResult {
   jobTitle: string;
   company: string;
   boardType: string;
+}
+
+// ── Fill progress streaming to sidebarHost ────────────────────────────────────
+function emitFillProgress(data: Record<string, unknown>): void {
+  try {
+    (window.top || window).postMessage({ __jae_fill: true, ...data }, '*');
+  } catch {
+    window.postMessage({ __jae_fill: true, ...data }, '*');
+  }
 }
 
 function first(...candidates: (string | null | undefined)[]): string {
@@ -794,6 +803,22 @@ function getKnownFieldValue(hint: string, resumeData: any): { keywords: string[]
   if (/relocat/i.test(hint)) return { keywords: [p?.willingToRelocate ? 'yes' : 'no'], label: 'Relocation' };
   if (/commut/i.test(hint)) return { keywords: [p?.ableToCommute ? 'yes' : 'no'], label: 'Commute' };
 
+  // ── City / Location (for combobox-style autocomplete fields) ─────────────────
+  const loc2 = typeof p?.location === 'object' ? p.location : { city: '', state: '', country: '' };
+  if (/\bcity\b|\bcurrent.*city\b/i.test(hint) && !/state|country/i.test(hint) && loc2?.city) {
+    return { keywords: [loc2.city], label: 'City' };
+  }
+  if (/\blocation\b/i.test(hint) && !/job.*location|role.*location|(?:remote|hybrid|on.?site)\b/i.test(hint) && (loc2?.city || loc2?.state)) {
+    const locStr = [loc2.city, loc2.state].filter(Boolean).join(', ');
+    return { keywords: [locStr, loc2.city].filter(Boolean), label: 'Location' };
+  }
+
+  // ── Referral / "Hear about us" ────────────────────────────────────────────────
+  // Match label text OR field name/id attributes like referral_source, source_id, how_heard
+  if (/hear.*about|how.*hear|how.*find.*(?:us|job|role|position|opening)|referral|refer.*source|source.*refer|learn.*about.*(?:role|job|opening|us|position|opportunit)/i.test(hint)) {
+    return { keywords: ['linkedin'], label: 'Referral Source' };
+  }
+
   return null;
 }
 
@@ -946,7 +971,10 @@ function fillApplicationForm(resumeData: any): FillResult {
     { patterns: /github/,                                        value: resumeData.onlinePresence?.githubUrl || '',   label: 'GitHub' },
     { patterns: /portfolio|website|personal.?url/,               value: resumeData.onlinePresence?.portfolioUrl || '', label: 'Portfolio' },
     { patterns: /salary|compensation|pay|expected/,              value: resumeData.commonQuestions?.expectedSalary || '', label: 'Expected Salary' },
-    { patterns: /notice.?period|start.?date|availability/,       value: resumeData.commonQuestions?.noticePeriod || '', label: 'Notice Period' },
+    { patterns: /notice.?period/,                                 value: resumeData.commonQuestions?.noticePeriod || '', label: 'Notice Period' },
+    { patterns: /start.?date|(?:ideal|preferred|target|expected|earliest|desired).*start.?date|when.*(?:can|could).*you.*start|available.*start|start.*availab/,
+                                                                  value: resumeData.commonQuestions?.availableStartDate || resumeData.commonQuestions?.noticePeriod || '', label: 'Available Start Date' },
+    { patterns: /\bavailability\b/,                               value: resumeData.commonQuestions?.availableStartDate || resumeData.commonQuestions?.noticePeriod || '', label: 'Availability' },
     { patterns: /summary|about.?you|profile|objective/,          value: resumeData.profileSummary || '',             label: 'Profile Summary' },
   ];
 
@@ -1149,7 +1177,14 @@ function fillRadioGroups(resumeData: any): FieldLogEntry[] {
     if (target) {
       target.checked = true;
       target.dispatchEvent(new Event('change', { bubbles: true }));
-      target.dispatchEvent(new Event('click', { bubbles: true }));
+      target.dispatchEvent(new Event('input',  { bubbles: true }));
+      // Click the associated label too — Greenhouse hides radios visually and
+      // drives state from label clicks, not the radio's checked property.
+      const labelEl = target.id
+        ? document.querySelector<HTMLElement>(`label[for="${target.id}"]`)
+        : target.closest('label');
+      if (labelEl) labelEl.click();
+      else target.dispatchEvent(new Event('click', { bubbles: true }));
       logger.debug(`✓ Radio "${groupName}" → "${targetValue}" (hint: "${hint.slice(0, 60)}")`);
       logs.push({
         fieldName: groupName,
@@ -1173,6 +1208,163 @@ function fillRadioGroups(resumeData: any): FieldLogEntry[] {
       });
     }
   });
+
+  return logs;
+}
+
+// Handles Greenhouse-style Yes/No segmented button controls that are real
+// <button> elements (not radio inputs). Walks up from the button group to
+// find the question label, then uses the same getKnownFieldValue logic.
+function getButtonGroupContextHint(container: HTMLElement): string {
+  let el: HTMLElement | null = container;
+  for (let i = 0; i < 8 && el; i++) {
+    let prev = el.previousElementSibling as HTMLElement | null;
+    while (prev) {
+      const text = prev.textContent?.trim();
+      if (text && text.length > 4) return text.toLowerCase();
+      prev = prev.previousElementSibling as HTMLElement | null;
+    }
+    el = el.parentElement;
+  }
+  return '';
+}
+
+function fillButtonGroups(resumeData: any): FieldLogEntry[] {
+  const logs: FieldLogEntry[] = [];
+  const visited = new Set<Element>();
+
+  const allButtons = Array.from(document.querySelectorAll<HTMLElement>(
+    'button, [role="button"]'
+  ));
+
+  for (const btn of allButtons) {
+    if (visited.has(btn)) continue;
+    const parent = btn.parentElement;
+    if (!parent) continue;
+
+    // Collect sibling interactive elements in this container
+    const sibs = Array.from(parent.children).filter(c =>
+      c.tagName === 'BUTTON' || c.getAttribute('role') === 'button'
+    ) as HTMLElement[];
+
+    if (sibs.length < 2 || sibs.length > 6) continue;
+
+    const texts = sibs.map(b => b.textContent?.trim().toLowerCase() || '');
+    const yesIdx = texts.findIndex(t => t === 'yes');
+    const noIdx  = texts.findIndex(t => t === 'no');
+    if (yesIdx === -1 || noIdx === -1) continue;
+
+    sibs.forEach(b => visited.add(b));
+
+    const hint = getButtonGroupContextHint(parent);
+    if (!hint) continue;
+
+    const known = getKnownFieldValue(hint, resumeData);
+    if (!known) {
+      logs.push({ fieldName: hint.slice(0, 50), fieldType: 'button-group', fieldLabel: hint.slice(0, 80), fieldHint: hint.slice(0, 120), filled: false, value: null, reason: 'No matching pattern' });
+      continue;
+    }
+
+    const target = known.keywords.find(k => k === 'yes' || k === 'no');
+    if (!target) continue;
+
+    const btnToClick = sibs[target === 'yes' ? yesIdx : noIdx] as HTMLButtonElement | null;
+    if (btnToClick && !(btnToClick as HTMLButtonElement).disabled) {
+      btnToClick.click();
+      logger.debug(`✓ Button group "${hint.slice(0, 60)}" → "${target}"`);
+      logs.push({ fieldName: hint.slice(0, 50), fieldType: 'button-group', fieldLabel: hint.slice(0, 80), fieldHint: hint.slice(0, 120), filled: true, value: target, reason: null });
+    }
+  }
+
+  return logs;
+}
+
+// Handles location text inputs that trigger a typeahead/autocomplete dropdown after
+// the sync fill sets the city value. Waits for the dropdown, then clicks the best
+// city+state match so the field registers a proper selection (not just raw text).
+async function fillLocationAutocompletes(resumeData: any): Promise<FieldLogEntry[]> {
+  const logs: FieldLogEntry[] = [];
+  const p = resumeData?.personal;
+  if (!p) return logs;
+
+  const loc = typeof p.location === 'object' ? p.location : { city: '', state: '', country: '' };
+  const city  = (loc.city  || '').trim();
+  const state = (loc.state || '').trim();
+  if (!city) return logs;
+
+  const cityLower  = city.toLowerCase();
+  const stateLower = state.toLowerCase();
+
+  // Find text inputs that were filled with the city value by the sync pass
+  // and look like a location/city autocomplete field
+  const candidates = Array.from(document.querySelectorAll<HTMLInputElement>(
+    'input[type="text"], input:not([type])'
+  )).filter(el => {
+    if (el.disabled || el.readOnly || el.getAttribute('aria-hidden') === 'true') return false;
+    if (el.value.trim().toLowerCase() !== cityLower) return false;
+    const hint = getFieldHint(el).toLowerCase();
+    return /\bcity\b|\blocation\b/.test(hint);
+  });
+
+  for (const el of candidates) {
+    const hint  = getFieldHint(el);
+    const label = getFieldLabel(el) || hint.slice(0, 40);
+
+    // Re-trigger the autocomplete by re-focusing and firing input events
+    el.focus();
+    el.dispatchEvent(new Event('input',  { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent('keyup', { key: cityLower.slice(-1), bubbles: true }));
+
+    await new Promise(r => setTimeout(r, 750));
+
+    // Collect visible dropdown options — support both [role="option"] and
+    // common typeahead patterns (Twitter Typeahead, Downshift, plain <li>)
+    let options: HTMLElement[] = Array.from(document.querySelectorAll<HTMLElement>(
+      '[role="option"], [role="listbox"] li, .tt-suggestion, .pac-item, ' +
+      '[class*="suggestion"]:not([aria-hidden="true"]), [class*="autocomplete-item"], [class*="dropdown-item"]'
+    )).filter(o => {
+      if (o.getAttribute('aria-hidden') === 'true') return false;
+      const r = o.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    });
+
+    if (!options.length) {
+      // Second attempt: mousedown to open
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+      await new Promise(r => setTimeout(r, 400));
+      options = Array.from(document.querySelectorAll<HTMLElement>(
+        '[role="option"], [role="listbox"] li, .tt-suggestion, [class*="suggestion"]'
+      )).filter(o => {
+        const r = o.getBoundingClientRect(); return r.width > 0 && r.height > 0;
+      });
+    }
+
+    if (!options.length) {
+      logs.push({ fieldName: el.name, fieldType: 'autocomplete', fieldLabel: label, fieldHint: hint.slice(0, 120), filled: false, value: null, reason: 'No dropdown options appeared' });
+      continue;
+    }
+
+    // Pick best match: prefer option whose text begins with "City," and also
+    // contains the state name — avoids "Austintown" when user typed "Austin"
+    const best =
+      options.find(o => {
+        const t = o.textContent?.toLowerCase() || '';
+        return t.includes(cityLower) && stateLower && t.includes(stateLower);
+      }) ||
+      options.find(o => {
+        const t = o.textContent?.toLowerCase() || '';
+        return t.startsWith(cityLower + ',') || t.startsWith(cityLower + ' ');
+      }) ||
+      options.find(o => (o.textContent?.toLowerCase() || '').includes(cityLower));
+
+    if (best) {
+      best.click();
+      logger.debug(`✓ Location autocomplete: clicked "${best.textContent?.trim()}"`);
+      logs.push({ fieldName: el.name, fieldType: 'autocomplete', fieldLabel: label, fieldHint: hint.slice(0, 120), filled: true, value: best.textContent?.trim() || city, reason: null });
+    } else {
+      logs.push({ fieldName: el.name, fieldType: 'autocomplete', fieldLabel: label, fieldHint: hint.slice(0, 120), filled: false, value: null, reason: 'No matching option in dropdown' });
+    }
+  }
 
   return logs;
 }
@@ -1264,19 +1456,20 @@ async function fillOpenEndedWithAI(
     if (isDropdown && selectContainer) {
       const known = getKnownFieldValue(richHint, resumeData);
       if (known) {
-        logger.debug(`Known-field fill (custom-select) "${known.label}": keyword="${known.keyword}"`);
+        logger.debug(`Known-field fill (custom-select) "${known.label}": keywords="${known.keywords.join(', ')}"`);
         const filled = await activateCustomSelect(el as HTMLInputElement, selectContainer, known.keywords);
         if (filled) {
           const fieldName = el.name || el.id || '';
-          result.fields.push({ fieldName, fieldType: 'select', fieldLabel: label, fieldHint: hint, filled: true, value: known.keyword, reason: `Known field: ${known.label}` });
+          result.fields.push({ fieldName, fieldType: 'select', fieldLabel: label, fieldHint: hint, filled: true, value: known.keywords[0], reason: `Known field: ${known.label}` });
         } else {
-          logger.debug(`✗ Known-field: no matching option for "${known.label}" keyword="${known.keyword}"`);
+          logger.debug(`✗ Known-field: no matching option for "${known.label}" keywords="${known.keywords.join(', ')}"`);
         }
         continue; // don't call AI for these fields
       }
     }
 
     logger.debug(`AI attempting${isDropdown ? ' (custom-select)' : ''}: "${richHint.slice(0, 60)}"`);
+    emitFillProgress({ type: 'ai_thinking', label: label.slice(0, 60) });
 
     const aiResponse = await requestAIAnswer({
       fieldLabel: richHint.slice(0, 200),
@@ -1288,6 +1481,7 @@ async function fillOpenEndedWithAI(
 
     if (!aiResponse?.answer) {
       logger.debug(`✗ AI returned no answer (type: ${aiResponse?.questionType ?? 'null'})`);
+      emitFillProgress({ type: 'field', filled: false, label: label.slice(0, 60), value: 'No answer generated' });
       continue;
     }
 
@@ -1310,6 +1504,7 @@ async function fillOpenEndedWithAI(
     // (note: known-field pre-check is handled above before the AI call)
 
     logger.debug(`✓ AI filled "${label.slice(0, 60)}" (${aiResponse.questionType}, ${aiResponse.confidence}%)`);
+    emitFillProgress({ type: 'field', filled: true, label: label.slice(0, 60), value: aiResponse.answer.slice(0, 60), ai: true });;
 
     // Update existing log entry if present, otherwise add one
     const fieldName = el.name || el.id || '';
@@ -1410,12 +1605,17 @@ async function fillCoverLetterField(
   }
   if (!ta) return;
 
+  emitFillProgress({ type: 'ai_thinking', label: 'Cover Letter' });
   const coverLetter = await requestCoverLetterGeneration(
     resumeContent, jobDescription, result.company, result.jobTitle
   );
-  if (!coverLetter) return;
+  if (!coverLetter) {
+    emitFillProgress({ type: 'field', filled: false, label: 'Cover Letter', value: 'Generation failed' });
+    return;
+  }
 
   applyValueToField(ta, coverLetter);
+  emitFillProgress({ type: 'field', filled: true, label: 'Cover Letter', value: 'Generated', ai: true });
 
   result.fields.push({
     fieldName: 'cover_letter',
@@ -1428,6 +1628,54 @@ async function fillCoverLetterField(
     generatedByAI: true,
     confidence: 85,
   });
+}
+
+// ── Resume PDF injection ──────────────────────────────────────────────────────
+async function injectResumePDF(): Promise<boolean> {
+  const stored = await new Promise<{ name: string; base64: string } | null>(resolve => {
+    chrome.storage.local.get(['jae_resume_pdf'], res => resolve(res.jae_resume_pdf || null));
+  });
+  if (!stored?.base64) return false;
+
+  const fileInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="file"]'))
+    .filter(input => {
+      const accept = (input.accept || '').toLowerCase();
+      const label  = getFieldLabel(input).toLowerCase();
+      const name   = (input.name  || '').toLowerCase();
+      const id     = (input.id    || '').toLowerCase();
+      const aria   = (input.getAttribute('aria-label') || '').toLowerCase();
+      const isResume = ['resume', 'cv', 'curriculum vitae'].some(
+        kw => label.includes(kw) || name.includes(kw) || id.includes(kw) || aria.includes(kw)
+      );
+      const acceptsPDF = !accept || accept.includes('pdf') || accept.includes('*') || accept.includes('application');
+      return isResume || (acceptsPDF && !accept.includes('image'));
+    });
+
+  if (!fileInputs.length) return false;
+
+  try {
+    const binary = atob(stored.base64);
+    const ab = new ArrayBuffer(binary.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < binary.length; i++) ia[i] = binary.charCodeAt(i);
+    const blob = new Blob([ab], { type: 'application/pdf' });
+    const file = new File([blob], stored.name || 'resume.pdf', { type: 'application/pdf' });
+
+    let injected = false;
+    for (const input of fileInputs) {
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('input',  { bubbles: true }));
+        injected = true;
+      } catch { /* input may be read-only */ }
+    }
+    return injected;
+  } catch {
+    return false;
+  }
 }
 
 // Listen for messages from popup
@@ -1448,23 +1696,95 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   } else if (request.action === 'fillForm') {
     logger.debug('Form filling triggered. Has description:', request.hasDescription || false);
-    const resumeData = request.resumeData || request.resume;
-    const result = fillApplicationForm(resumeData);
-    const selectLogs = fillSelectElements(resumeData);
-    result.fields.push(...selectLogs);
-    const resumeText: string = request.resume || '';
-    const jobDescription: string = request.jobData?.description || '';
-
-    fillOpenEndedWithAI(result, resumeData, resumeText, jobDescription)
-      .then(() => fillCoverLetterField(result, resumeText, jobDescription))
-      .then(() => {
-        const filled = result.fields.filter(f => f.filled).length;
-        const total  = result.fields.length;
-        showFillNotification(filled, total);
-        sendResponse({ success: true, ...result, devMode: isDev(), testOnlyField: getDevConfig().testOnlyField });
-      });
+    runFill(
+      request.resumeData || request.resume,
+      request.resume || '',
+      request.jobData || null,
+      !!(request as any).hasDescription,
+      (result) => sendResponse({ success: true, ...result, devMode: isDev(), testOnlyField: getDevConfig().testOnlyField })
+    );
     return true; // keep channel open for async response
   }
+});
+
+// Shared fill execution — called from the message handler above and from the sidebar trigger below
+function runFill(
+  resumeData: any,
+  resumeText: string,
+  jobData: { description?: string; title?: string; company?: string } | null,
+  hasDescription: boolean,
+  done?: (result: any) => void
+): void {
+  emitFillProgress({ type: 'start' });
+
+  const result = fillApplicationForm(resumeData);
+  const selectLogs = fillSelectElements(resumeData);
+  result.fields.push(...selectLogs);
+  const buttonGroupLogs = fillButtonGroups(resumeData);
+  result.fields.push(...buttonGroupLogs);
+
+  for (const f of result.fields) {
+    if (f.filled) {
+      emitFillProgress({
+        type: 'field', filled: true,
+        label: f.fieldLabel || f.fieldName || 'Field',
+        value: String(f.value || '').slice(0, 60),
+      });
+    }
+  }
+
+  const jobDescription: string = jobData?.description || '';
+
+  fillOpenEndedWithAI(result, resumeData, resumeText, jobDescription)
+    .then(() => fillLocationAutocompletes(resumeData).then(locLogs => {
+      for (const l of locLogs) {
+        result.fields.push(l);
+        if (l.filled) emitFillProgress({ type: 'field', filled: true, label: l.fieldLabel || 'Location', value: l.value || '' });
+      }
+    }))
+    .then(() => fillCoverLetterField(result, resumeText, jobDescription))
+    .then(async () => {
+      const pdfFilled = await injectResumePDF();
+      emitFillProgress({ type: 'pdf', filled: pdfFilled });
+
+      const filled = result.fields.filter(f => f.filled).length;
+      const total  = result.fields.length;
+      emitFillProgress({ type: 'complete', filledCount: filled, totalCount: total });
+
+      chrome.storage.local.get(['formLogs'], res => {
+        const logs: FormLogEntry[] = (res.formLogs as FormLogEntry[]) || [];
+        logs.push({
+          jobTitle:       result.jobTitle,
+          company:        result.company,
+          boardType:      result.boardType,
+          timestamp:      new Date().toISOString(),
+          url:            window.location.href,
+          jobDescription: hasDescription,
+          fields:         result.fields,
+          summary: {
+            totalFields: total,
+            filled,
+            failed:      total - filled,
+            successRate: total > 0 ? Math.round((filled / total) * 100) : 0,
+          },
+        });
+        if (logs.length > 50) logs.splice(0, logs.length - 50);
+        chrome.storage.local.set({ formLogs: logs });
+      });
+
+      showFillNotification(filled, total);
+      done?.(result);
+    })
+    .catch(err => logger.error('runFill error:', err));
+}
+
+// Triggered by sidebarHost when user clicks "Fill this application" in the Fill Progress tab
+window.addEventListener('jae_fill_triggered', () => {
+  chrome.storage.local.get(['resume'], (stored) => {
+    const resumeData = (stored as any).resume;
+    if (!resumeData?.personal) return;
+    runFill(resumeData, '', null, false);
+  });
 });
 
 //logger.info('Content script loaded on', window.location.href);

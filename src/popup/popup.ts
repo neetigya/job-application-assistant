@@ -235,9 +235,41 @@ function triggerFormFill(resume: ResumeData, jobData: JobData | null, hasDescrip
 // ── Main init ─────────────────────────────────────────────────────────────────
 
 async function initPopup() {
+  // Apply saved theme before rendering anything
+  chrome.storage.local.get(['jae_theme'], (res: any) => {
+    document.documentElement.setAttribute('data-theme', res.jae_theme || 'light');
+  });
+
   const resume = await getResume();
 
-  // ── Settings button ────────────────────────────────────────────────────────
+  // ── Job chip: detect job on current page ───────────────────────────────────
+  let detectedJobData: JobData | null = null;
+  {
+    const { jobData } = await getJobDataFromPage();
+    detectedJobData = jobData;
+    const chip    = document.getElementById('jobChip')!;
+    const noJobEl = document.getElementById('noJobMsg')!;
+    if (jobData?.title || jobData?.company) {
+      chip.classList.remove('hidden');
+      noJobEl.classList.add('hidden');
+      document.getElementById('jobChipTitle')!.textContent =
+        jobData.title || jobData.company || 'Job detected';
+      document.getElementById('jobChipSub')!.textContent =
+        [jobData.company, 'detected on this page'].filter(Boolean).join(' · ');
+    } else {
+      chip.classList.add('hidden');
+      noJobEl.classList.remove('hidden');
+    }
+
+    document.getElementById('jobChipClear')?.addEventListener('click', () => {
+      detectedJobData = null;
+      chip.classList.add('hidden');
+      noJobEl.classList.remove('hidden');
+      noJobEl.textContent = 'Job cleared';
+    });
+  }
+
+  // ── Settings / gear button ─────────────────────────────────────────────────
   document.getElementById('settingsBtn')?.addEventListener('click', () => {
     chrome.runtime.openOptionsPage();
   });
@@ -252,11 +284,20 @@ async function initPopup() {
     window.close();
   });
 
-  // ── Fill Form button — skip job-description dialog, fill immediately ────────
-  document.getElementById('fillFormBtn')?.addEventListener('click', () => {
+  // ── Fill Form button — fire & close; sidebar shows live progress ────────────
+  document.getElementById('fillFormBtn')?.addEventListener('click', async () => {
     if (!resume) { showError('No resume configured. Please edit your resume first.'); return; }
-    showView('formFill');
-    triggerFormFill(resume, null, false);
+    const tabId = await getActiveTabId();
+    if (!tabId) { showError('Cannot connect to the page. Try reloading the tab.'); return; }
+    const resumeText = formatResumeAsText(resume);
+    chrome.tabs.sendMessage(tabId, {
+      action: 'fillForm',
+      resumeData: resume,
+      resume: resumeText,
+      jobData: detectedJobData,
+      hasDescription: !!(detectedJobData?.description),
+    }, { frameId: 0 }, () => { chrome.runtime.lastError; }); // fire and forget
+    window.close();
   });
 
   // ── Analyze button ─────────────────────────────────────────────────────────
@@ -335,7 +376,7 @@ async function initPopup() {
     try {
       await navigator.clipboard.writeText(coverLetter);
       resultEl.classList.remove('hidden');
-      resultMsg.textContent = '✅ Copied to clipboard!';
+      resultMsg.textContent = 'Copied to clipboard!';
       resultDetail.textContent = hasJD
         ? `Tailored to: ${jobData?.title || 'this role'} at ${jobData?.company || 'this company'}`
         : 'Based on your resume — paste a job description for better results';
