@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 import { isDev, getDevConfig } from '../config/devMode';
 import { initSelectionToolbar } from './selectionToolbar';
 import { initSidebarHost } from './sidebarHost';
+import { initFieldFixOverlay, registerAiField, updateFieldStatus, verifyFieldWrite } from './fieldFixOverlay';
 
 interface FillResult {
   fields: FieldLogEntry[];
@@ -1504,7 +1505,30 @@ async function fillOpenEndedWithAI(
     // (note: known-field pre-check is handled above before the AI call)
 
     logger.debug(`✓ AI filled "${label.slice(0, 60)}" (${aiResponse.questionType}, ${aiResponse.confidence}%)`);
-    emitFillProgress({ type: 'field', filled: true, label: label.slice(0, 60), value: aiResponse.answer.slice(0, 60), ai: true });;
+
+    // Register plain text/textarea AI answers for the on-page fix icon + read-back
+    // check. Custom-dropdown answers (isDropdown branch above) are click-driven,
+    // not controlled-input writes, and are out of scope for read-back verification.
+    let fieldId: number | undefined;
+    if (!isDropdown) {
+      fieldId = registerAiField(
+        el as HTMLInputElement | HTMLTextAreaElement,
+        { label, richHint, hint, resumeContent, jobDescription, companyName: result.company },
+        aiResponse.answer,
+        'filled'
+      );
+    }
+
+    emitFillProgress({ type: 'field', id: fieldId, filled: true, label: label.slice(0, 60), value: aiResponse.answer.slice(0, 60), ai: true });
+
+    if (fieldId !== undefined) {
+      const fid = fieldId;
+      verifyFieldWrite(el as HTMLInputElement | HTMLTextAreaElement, aiResponse.answer).then(ok => {
+        if (ok) return;
+        updateFieldStatus(fid, 'unconfirmed');
+        emitFillProgress({ type: 'field_update', id: fid, status: 'unconfirmed', reason: 'May not have saved — check this field' });
+      });
+    }
 
     // Update existing log entry if present, otherwise add one
     const fieldName = el.name || el.id || '';
@@ -1708,88 +1732,129 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // Shared fill execution — called from the message handler above and from the sidebar trigger below
-function runFill(
+// Some ATS forms (Ashby in particular) run their own resume-parsing autofill when a
+// resume file is dropped into the upload field — which can re-render and wipe out
+// values we've already written to other fields. Give that a moment to settle before
+// we write anything else on top of it.
+const RESUME_AUTOFILL_SETTLE_MS = 1500;
+
+async function runFill(
   resumeData: any,
   resumeText: string,
   jobData: { description?: string; title?: string; company?: string } | null,
   hasDescription: boolean,
-  done?: (result: any) => void
-): void {
+  done?: (result: any) => void,
+  attachPdf: boolean = true
+): Promise<void> {
   emitFillProgress({ type: 'start' });
 
-  const result = fillApplicationForm(resumeData);
-  const selectLogs = fillSelectElements(resumeData);
-  result.fields.push(...selectLogs);
-  const buttonGroupLogs = fillButtonGroups(resumeData);
-  result.fields.push(...buttonGroupLogs);
-
-  for (const f of result.fields) {
-    if (f.filled) {
-      emitFillProgress({
-        type: 'field', filled: true,
-        label: f.fieldLabel || f.fieldName || 'Field',
-        value: String(f.value || '').slice(0, 60),
-      });
-    }
-  }
-
-  const jobDescription: string = jobData?.description || '';
-
-  fillOpenEndedWithAI(result, resumeData, resumeText, jobDescription)
-    .then(() => fillLocationAutocompletes(resumeData).then(locLogs => {
-      for (const l of locLogs) {
-        result.fields.push(l);
-        if (l.filled) emitFillProgress({ type: 'field', filled: true, label: l.fieldLabel || 'Location', value: l.value || '' });
-      }
-    }))
-    .then(() => fillCoverLetterField(result, resumeText, jobDescription))
-    .then(async () => {
+  try {
+    // Attach the stored resume PDF FIRST, and let any site-side resume-triggered
+    // autofill finish, before we fill anything else — so our writes land last.
+    // Skipped on Refill (attachPdf=false) — re-attaching on every refill can
+    // re-trigger the page's own resume-upload autofill and wipe fields that
+    // were just fixed. Use the standalone Reupload action for that instead.
+    if (attachPdf) {
       const pdfFilled = await injectResumePDF();
       emitFillProgress({ type: 'pdf', filled: pdfFilled });
+      if (pdfFilled) {
+        await new Promise(resolve => setTimeout(resolve, RESUME_AUTOFILL_SETTLE_MS));
+      }
+    }
 
-      const filled = result.fields.filter(f => f.filled).length;
-      const total  = result.fields.length;
-      emitFillProgress({ type: 'complete', filledCount: filled, totalCount: total });
+    const result = fillApplicationForm(resumeData);
+    const selectLogs = fillSelectElements(resumeData);
+    result.fields.push(...selectLogs);
+    const buttonGroupLogs = fillButtonGroups(resumeData);
+    result.fields.push(...buttonGroupLogs);
 
-      chrome.storage.local.get(['formLogs'], res => {
-        const logs: FormLogEntry[] = (res.formLogs as FormLogEntry[]) || [];
-        logs.push({
-          jobTitle:       result.jobTitle,
-          company:        result.company,
-          boardType:      result.boardType,
-          timestamp:      new Date().toISOString(),
-          url:            window.location.href,
-          jobDescription: hasDescription,
-          fields:         result.fields,
-          summary: {
-            totalFields: total,
-            filled,
-            failed:      total - filled,
-            successRate: total > 0 ? Math.round((filled / total) * 100) : 0,
-          },
+    for (const f of result.fields) {
+      if (f.filled) {
+        emitFillProgress({
+          type: 'field', filled: true,
+          label: f.fieldLabel || f.fieldName || 'Field',
+          value: String(f.value || '').slice(0, 60),
         });
-        if (logs.length > 50) logs.splice(0, logs.length - 50);
-        chrome.storage.local.set({ formLogs: logs });
-      });
+      }
+    }
 
-      showFillNotification(filled, total);
-      done?.(result);
-    })
-    .catch(err => logger.error('runFill error:', err));
+    const jobDescription: string = jobData?.description || '';
+
+    await fillOpenEndedWithAI(result, resumeData, resumeText, jobDescription);
+
+    const locLogs = await fillLocationAutocompletes(resumeData);
+    for (const l of locLogs) {
+      result.fields.push(l);
+      if (l.filled) emitFillProgress({ type: 'field', filled: true, label: l.fieldLabel || 'Location', value: l.value || '' });
+    }
+
+    await fillCoverLetterField(result, resumeText, jobDescription);
+
+    const filled = result.fields.filter(f => f.filled).length;
+    const total  = result.fields.length;
+    emitFillProgress({ type: 'complete', filledCount: filled, totalCount: total });
+
+    chrome.storage.local.get(['formLogs'], res => {
+      const logs: FormLogEntry[] = (res.formLogs as FormLogEntry[]) || [];
+      logs.push({
+        jobTitle:       result.jobTitle,
+        company:        result.company,
+        boardType:      result.boardType,
+        timestamp:      new Date().toISOString(),
+        url:            window.location.href,
+        jobDescription: hasDescription,
+        fields:         result.fields,
+        summary: {
+          totalFields: total,
+          filled,
+          failed:      total - filled,
+          successRate: total > 0 ? Math.round((filled / total) * 100) : 0,
+        },
+      });
+      if (logs.length > 50) logs.splice(0, logs.length - 50);
+      chrome.storage.local.set({ formLogs: logs });
+    });
+
+    showFillNotification(filled, total);
+    done?.(result);
+  } catch (err) {
+    logger.error('runFill error:', err);
+  }
 }
 
-// Triggered by sidebarHost when user clicks "Fill this application" in the Fill Progress tab
-window.addEventListener('jae_fill_triggered', () => {
+// Triggered by sidebarHost when user clicks "Fill this application" or "Refill"
+// in the Fill Progress tab. attachPdf is false for Refill (see runFill above).
+window.addEventListener('jae_fill_triggered', (e: Event) => {
+  const attachPdf = (e as CustomEvent).detail?.attachPdf !== false;
   chrome.storage.local.get(['resume'], (stored) => {
     const resumeData = (stored as any).resume;
     if (!resumeData?.personal) return;
-    runFill(resumeData, '', null, false);
+    runFill(resumeData, '', null, false, undefined, attachPdf);
+  });
+});
+
+// Triggered by sidebarHost when user clicks "Reupload" — re-attaches the stored
+// resume PDF only, without touching any other field.
+window.addEventListener('jae_reupload_triggered', () => {
+  void injectResumePDF().then(pdfFilled => {
+    emitFillProgress({ type: 'pdf', filled: pdfFilled });
   });
 });
 
 //logger.info('Content script loaded on', window.location.href);
 
-// Initialise the selection toolbar and sidebar host.
-// Both must come after all functions are defined.
+// Initialise the selection toolbar, field-fix overlay, and sidebar host.
+// All must come after all functions are defined.
 initSelectionToolbar(applyValueToField);
+initFieldFixOverlay(applyValueToField, requestAIAnswer, (id, value, status, source) => {
+  emitFillProgress({
+    type: 'field_update',
+    id,
+    status,
+    value: value.slice(0, 60),
+    reason: status === 'unconfirmed'
+      ? 'May not have saved — check this field'
+      : (source === 'regenerate' ? 'Regenerated' : 'Edited manually'),
+  });
+});
 initSidebarHost(extractJobData);

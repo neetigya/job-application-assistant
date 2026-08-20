@@ -375,15 +375,19 @@ function switchTab(tab: 'workspace' | 'fields'): void {
 // ── Fill progress (new grouped layout) ───────────────────────────────────────
 
 interface FillFieldEntry {
+  id?: number;
   label: string;
   filled: boolean;
   value?: string;
   reason?: string;
   type?: string; // 'pdf' | 'field'
+  status?: 'unconfirmed';
 }
 
 const allFillEntries: FillFieldEntry[] = [];
 const thinkingEntries = new Map<string, HTMLElement>();
+let lastFillCounts = { filled: 0, total: 0 };
+let fillComplete = false;
 
 function esc(s: string): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -413,8 +417,9 @@ function renderFillComplete(filledCount: number, totalCount: number): void {
   ($('fill-track-fill') as HTMLElement).style.width = `${pct}%`;
 
   // Partition entries
-  const attention  = allFillEntries.filter(e => !e.filled && e.type !== 'pdf');
-  const filledFields = allFillEntries.filter(e => e.filled && e.type !== 'pdf');
+  const attention    = allFillEntries.filter(e => !e.filled && e.type !== 'pdf');
+  const unconfirmed   = allFillEntries.filter(e => e.filled && e.status === 'unconfirmed' && e.type !== 'pdf');
+  const filledFields = allFillEntries.filter(e => e.filled && e.status !== 'unconfirmed' && e.type !== 'pdf');
   const pdfEntries  = allFillEntries.filter(e => e.type === 'pdf');
 
   // Needs attention
@@ -444,6 +449,35 @@ function renderFillComplete(filledCount: number, totalCount: number): void {
         reason.textContent = entry.reason;
         item.appendChild(reason);
       }
+      feed.appendChild(item);
+    });
+  }
+
+  // Unconfirmed — value was written but a read-back check didn't confirm it stuck
+  if (unconfirmed.length > 0) {
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'fill-group-label warning';
+    groupLabel.textContent = 'May not have saved';
+    feed.appendChild(groupLabel);
+
+    unconfirmed.forEach(entry => {
+      const item = document.createElement('div');
+      item.className = 'fill-attention-item warning';
+      const row = document.createElement('div');
+      row.className = 'fill-attention-row';
+      const name = document.createElement('span');
+      name.className = 'fill-attention-name';
+      name.textContent = entry.label;
+      const action = document.createElement('span');
+      action.className = 'fill-attention-action warning';
+      action.textContent = 'Check on page';
+      row.appendChild(name);
+      row.appendChild(action);
+      item.appendChild(row);
+      const reason = document.createElement('div');
+      reason.className = 'fill-attention-reason';
+      reason.textContent = entry.reason || 'Click into the field on the page to fix';
+      item.appendChild(reason);
       feed.appendChild(item);
     });
   }
@@ -487,11 +521,12 @@ function renderFillComplete(filledCount: number, totalCount: number): void {
   }
 }
 
-function appendFeedEntry(opts: { label: string; icon: string; cls: string; value?: string }): HTMLElement {
+function appendFeedEntry(opts: { label: string; icon: string; cls: string; value?: string; id?: number }): HTMLElement {
   const feed = $('fill-feed');
   const el   = document.createElement('div');
   el.className = `feed-entry ${opts.cls}`;
   el.dataset.label = opts.label;
+  if (opts.id !== undefined) el.dataset.id = String(opts.id);
   el.innerHTML =
     `<span class="feed-icon">${opts.icon}</span>` +
     `<span class="feed-label" title="${esc(opts.label)}">${esc(opts.label)}</span>` +
@@ -504,12 +539,15 @@ function appendFeedEntry(opts: { label: string; icon: string; cls: string; value
 function handleFillStart(): void {
   switchTab('fields');
   fillHasStarted = true;
+  fillComplete = false;
   setFillEmptyState(false);
   thinkingEntries.clear();
   allFillEntries.length = 0;
   $('fill-feed').innerHTML = '';
   $('fill-progress-bar').classList.add('hidden');
   $('fill-feed-header').textContent = 'Filling form…';
+  ($('refill-btn') as HTMLButtonElement).disabled = true;
+  ($('reupload-btn') as HTMLButtonElement).disabled = true;
 }
 
 function handleFillProgress(data: any): void {
@@ -519,7 +557,7 @@ function handleFillProgress(data: any): void {
     return;
   }
   if (data.type === 'field') {
-    allFillEntries.push({ label: data.label, filled: data.filled, value: data.value, reason: data.reason, type: 'field' });
+    allFillEntries.push({ id: data.id, label: data.label, filled: data.filled, value: data.value, reason: data.reason, type: 'field' });
 
     const existing = thinkingEntries.get(data.label);
     if (existing) {
@@ -528,8 +566,10 @@ function handleFillProgress(data: any): void {
       existing.querySelector<HTMLElement>('.feed-icon')!.textContent = data.filled ? '✓' : '✗';
       const valEl = existing.querySelector<HTMLElement>('.feed-value');
       if (valEl && data.value) valEl.textContent = String(data.value).slice(0, 45);
+      if (data.id !== undefined) existing.dataset.id = String(data.id);
     } else {
       appendFeedEntry({
+        id:    data.id,
         label: data.label,
         icon:  data.filled ? '✓' : '✗',
         cls:   data.filled ? 'fe-filled' : 'fe-failed',
@@ -539,16 +579,64 @@ function handleFillProgress(data: any): void {
     return;
   }
   if (data.type === 'pdf') {
-    allFillEntries.push({ label: 'Resume PDF', filled: data.filled, type: 'pdf' });
-    appendFeedEntry({ label: 'Resume PDF', icon: '📎', cls: 'fe-pdf',
-      value: data.filled ? 'Attached' : 'No file field found' });
+    const idx = allFillEntries.findIndex(e => e.type === 'pdf');
+    if (idx >= 0) allFillEntries[idx].filled = data.filled;
+    else allFillEntries.push({ label: 'Resume PDF', filled: data.filled, type: 'pdf' });
+
+    if (fillComplete) {
+      // A 'pdf' message while fillComplete is still true can only come from the
+      // standalone Reupload button — a full fill always flips fillComplete to
+      // false (via handleFillStart) before it emits its own 'pdf' step.
+      ($('reupload-btn') as HTMLButtonElement).disabled = false;
+      renderFillComplete(lastFillCounts.filled, lastFillCounts.total);
+    } else {
+      appendFeedEntry({ label: 'Resume PDF', icon: '📎', cls: 'fe-pdf',
+        value: data.filled ? 'Attached' : 'No file field found' });
+    }
+    return;
   }
+  if (data.type === 'field_update') {
+    handleFieldUpdate(data);
+  }
+}
+
+// A field written earlier (AI text answer) got a status change — either the initial
+// read-back check found it didn't stick, or a Regenerate/Write custom fix ran on
+// the page via the fieldFixOverlay icon. Patch it wherever it's currently rendered.
+function handleFieldUpdate(data: { id?: number; status?: 'unconfirmed'; value?: string; reason?: string }): void {
+  if (data.id === undefined) return;
+  const entry = allFillEntries.find(e => e.id === data.id);
+  if (!entry) return;
+  entry.status = data.status;
+  if (data.value !== undefined) entry.value = data.value;
+  if (data.reason !== undefined) entry.reason = data.reason;
+
+  if (fillComplete) {
+    renderFillComplete(lastFillCounts.filled, lastFillCounts.total);
+    return;
+  }
+
+  const feedEntry = document.querySelector<HTMLElement>(`.feed-entry[data-id="${data.id}"]`);
+  if (!feedEntry) return;
+  if (data.status === 'unconfirmed') {
+    feedEntry.className = 'feed-entry fe-unconfirmed';
+    feedEntry.querySelector<HTMLElement>('.feed-icon')!.textContent = '⚠';
+  } else {
+    feedEntry.className = 'feed-entry fe-filled';
+    feedEntry.querySelector<HTMLElement>('.feed-icon')!.textContent = '✓';
+  }
+  const valEl = feedEntry.querySelector<HTMLElement>('.feed-value');
+  if (valEl && data.value) valEl.textContent = String(data.value).slice(0, 45);
 }
 
 function handleFillComplete(data: any): void {
   $('fill-feed-header').textContent = 'Fill complete';
+  ($('refill-btn') as HTMLButtonElement).disabled = false;
+  ($('reupload-btn') as HTMLButtonElement).disabled = false;
   const filledCount = data.filledCount ?? 0;
   const totalCount  = data.totalCount  ?? allFillEntries.length;
+  lastFillCounts = { filled: filledCount, total: totalCount };
+  fillComplete = true;
   renderFillComplete(filledCount, totalCount);
 }
 
@@ -559,18 +647,36 @@ function setFillEmptyState(empty: boolean): void {
   const emptyEl = $('fill-empty-state');
   const progressEl = $('fill-progress-bar');
   const feedEl = $('fill-feed');
-  const headerEl = $('fill-feed-header');
+  const headerRowEl = $('fill-feed-header-row');
   emptyEl.style.display    = empty ? '' : 'none';
   progressEl.style.display = empty ? 'none' : '';
   feedEl.style.display     = empty ? 'none' : '';
-  headerEl.style.display   = empty ? 'none' : '';
+  headerRowEl.style.display = empty ? 'none' : '';
+}
+
+const SUN_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
+const MOON_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+
+function applyThemeToggleIcon(theme: string) {
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.innerHTML = theme === 'dark' ? SUN_ICON : MOON_ICON;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init(): Promise<void> {
   // Apply theme from storage
   chrome.storage.local.get(['jae_theme'], (res: any) => {
-    document.documentElement.setAttribute('data-theme', res.jae_theme || 'light');
+    const theme = res.jae_theme || 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    applyThemeToggleIcon(theme);
+  });
+
+  $('theme-toggle-btn').addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    applyThemeToggleIcon(next);
+    chrome.storage.local.set({ jae_theme: next });
   });
 
   const stored = await new Promise<any>(resolve => {
@@ -588,9 +694,25 @@ async function init(): Promise<void> {
   $('close-btn').addEventListener('click', () => sendUp('hideSidebar'));
   $('settings-btn').addEventListener('click', () => chrome.runtime.openOptionsPage());
 
-  // Fill this application button in empty state
+  // Fill this application button in empty state — first fill, attaches the resume PDF
   $('fill-empty-trigger-btn').addEventListener('click', () => {
-    sendUp('triggerFill');
+    sendUp('triggerFill', { attachPdf: true });
+  });
+
+  // Refill button — re-runs the field fill after one has already completed.
+  // Does NOT re-attach the resume PDF (use the Reupload button for that) —
+  // re-attaching on every refill could re-trigger the page's own resume-upload
+  // autofill and wipe fields that were just fixed.
+  $('refill-btn').addEventListener('click', () => {
+    sendUp('triggerFill', { attachPdf: false });
+  });
+
+  // Reupload button — re-attaches the stored resume PDF only, without refilling
+  // other fields. Separate from Refill so re-attaching doesn't disturb fields
+  // that already look right.
+  $('reupload-btn').addEventListener('click', () => {
+    ($('reupload-btn') as HTMLButtonElement).disabled = true;
+    sendUp('triggerReupload');
   });
 
   $('copy-jd-btn').addEventListener('click', () => {

@@ -16,6 +16,9 @@ export interface FieldLogEntry {
   reason: string | null;
   generatedByAI?: boolean;
   confidence?: number;
+  // Set only for AI-generated text/textarea answers whose read-back check
+  // found the value didn't stick (e.g. reverted by a controlled-component re-render).
+  status?: 'unconfirmed';
 }
 
 export interface FormLogEntry {

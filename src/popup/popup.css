@@ -43,6 +43,12 @@ body {
   gap: 7px;
 }
 
+.popup-header-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .popup-title {
   font-size: 14px;
   font-weight: 700;

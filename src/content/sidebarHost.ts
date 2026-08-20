@@ -188,7 +188,7 @@ function initListeners(): void {
       if (type === 'start') {
         showSidebar();
         postToSidebar('fillStart', {});
-      } else if (type === 'field' || type === 'ai_thinking' || type === 'pdf') {
+      } else if (type === 'field' || type === 'ai_thinking' || type === 'pdf' || type === 'field_update') {
         postToSidebar('fillProgress', e.data);
       } else if (type === 'complete') {
         postToSidebar('fillComplete', e.data);
@@ -207,7 +207,11 @@ function initListeners(): void {
     }
     if (action === 'hideSidebar') { hideSidebar(); return; }
     if (action === 'triggerFill') {
-      window.dispatchEvent(new CustomEvent('jae_fill_triggered'));
+      window.dispatchEvent(new CustomEvent('jae_fill_triggered', { detail: data }));
+      return;
+    }
+    if (action === 'triggerReupload') {
+      window.dispatchEvent(new CustomEvent('jae_reupload_triggered'));
       return;
     }
 

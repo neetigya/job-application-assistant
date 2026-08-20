@@ -15,6 +15,7 @@
         <div id="header-subtitle" class="hidden"></div>
       </div>
       <div id="header-actions">
+        <button id="theme-toggle-btn" title="Toggle theme"></button>
         <button id="settings-btn" title="Settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -86,7 +87,13 @@
         </div>
       </div>
 
-      <div id="fill-feed-header"></div>
+      <div id="fill-feed-header-row" style="display:none;">
+        <span id="fill-feed-header"></span>
+        <div id="fill-feed-header-btns">
+          <button id="reupload-btn" class="sm-btn" title="Re-attach the stored resume PDF only, without refilling other fields">Reupload</button>
+          <button id="refill-btn" class="sm-btn" title="Re-fill fields on this page (does not re-attach the resume PDF)">Refill</button>
+        </div>
+      </div>
       <div id="fill-feed"></div>
     </div>
 
